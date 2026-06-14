@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-14 (Phase 8 companion hardening)
+**Last updated:** 2026-06-14 (Phase 8 companion bounds persistence)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -134,6 +134,10 @@ Arguments: { updates: Record<string, string|boolean> }
     "initiative_enabled"      → writes [initiative] enabled = value (bool)
     "initiative_level"        → writes [initiative] level = value (number)
     "initiative_cooldown_ms"  → writes [initiative] cooldown_ms = value (number)
+    "companion_window_x"      → writes [companion.window] x = value (number, physical px)
+    "companion_window_y"      → writes [companion.window] y = value (number, physical px)
+    "companion_window_width"  → writes [companion.window] width = value (number, logical px)
+    "companion_window_height" → writes [companion.window] height = value (number, logical px)
 Returns:  string "ok"
 Errors:   string with error message
 Side effect: Writes to config/user.toml. Does NOT hot-reload the backend.
@@ -434,6 +438,9 @@ Companion dialogue bubble placement:
 - If there is not enough room above, placement switches below.
 - If vertical placement would hit screen bounds, placement switches to the right or left.
 - The dialog window is positioned outside the companion window bounds whenever screen space allows, so it does not overlap the avatar image.
+- The companion window restores `[companion.window]` bounds on startup.
+- Drag/resize changes are debounced and persisted through `update_settings`.
+- `x` and `y` are saved in physical pixels from Tauri window position APIs; `width` and `height` are saved in logical pixels and clamped to frontend min/max companion size.
 
 Window close behavior:
 - Closing `main` or `companion` hides that window instead of destroying it.
@@ -466,6 +473,14 @@ interface ConfigSnapshot {
       enabled: boolean;
       image_path: string;    // relative to frontend public/, e.g. "companion-cat-placeholder.png"
       model_type: "placeholder" | "live2d" | "digital_human";
+    };
+  };
+  companion: {
+    window: {
+      x: number | null;
+      y: number | null;
+      width: number;
+      height: number;
     };
   };
   remote_api: {

@@ -18,6 +18,9 @@ interface ConfigSnapshot {
     theme: { mode: string };
     avatar: { enabled: boolean; image_path: string; model_type: string };
   };
+  companion: {
+    window: { x: number | null; y: number | null; width: number; height: number };
+  };
   remote_api: { base_url: string; model: string; has_api_key: boolean };
   local_llm: {
     backend: string;
@@ -734,6 +737,7 @@ function fallbackConfig(): ConfigSnapshot {
       theme: { mode: "system" },
       avatar: { enabled: true, image_path: "companion-cat-placeholder.png", model_type: "placeholder" },
     },
+    companion: { window: { x: null, y: null, width: COMPANION_DEFAULT_SIZE.width, height: COMPANION_DEFAULT_SIZE.height } },
     remote_api: { base_url: "https://api.deepseek.com", model: "deepseek-chat", has_api_key: false },
     local_llm: {
       backend: "llama_cpp",
@@ -967,6 +971,8 @@ async function buildCompanionView() {
   let inFlight = false;
   let dialogVisible = false;
   let companionWindowVisible = true;
+  let restoringCompanionWindow = true;
+  let persistWindowTimer: number | null = null;
 
   const shell = el("main", { class: "companion-surface" });
   const controls = el("div", { class: "companion-controls" });
@@ -989,6 +995,58 @@ async function buildCompanionView() {
   app.append(shell);
 
   const dialogWindow = await Window.getByLabel("companion_dialog");
+  const clampCompanionSize = (width: number, height: number) => ({
+    width: Math.max(COMPANION_MIN_SIZE.width, Math.min(COMPANION_MAX_SIZE.width, Math.round(width))),
+    height: Math.max(COMPANION_MIN_SIZE.height, Math.min(COMPANION_MAX_SIZE.height, Math.round(height))),
+  });
+  const companionWindowConfig = cfg.companion?.window ?? {
+    x: null,
+    y: null,
+    width: COMPANION_DEFAULT_SIZE.width,
+    height: COMPANION_DEFAULT_SIZE.height,
+  };
+  const restoreCompanionWindowBounds = async () => {
+    const size = clampCompanionSize(companionWindowConfig.width, companionWindowConfig.height);
+    await currentWindow.setSize(new LogicalSize(size.width, size.height)).catch(() => {});
+    if (Number.isFinite(companionWindowConfig.x) && Number.isFinite(companionWindowConfig.y)) {
+      await currentWindow
+        .setPosition(new PhysicalPosition(Math.round(companionWindowConfig.x ?? 0), Math.round(companionWindowConfig.y ?? 0)))
+        .catch(() => {});
+    }
+    restoringCompanionWindow = false;
+  };
+  const persistCompanionWindowBounds = async () => {
+    if (!companionWindowVisible || restoringCompanionWindow) return;
+    try {
+      const [position, size, scaleFactor] = await Promise.all([
+        currentWindow.outerPosition(),
+        currentWindow.outerSize(),
+        currentWindow.scaleFactor(),
+      ]);
+      const logicalSize = size.toLogical(scaleFactor);
+      const clampedSize = clampCompanionSize(logicalSize.width, logicalSize.height);
+      await invoke("update_settings", {
+        updates: {
+          companion_window_x: Math.round(position.x),
+          companion_window_y: Math.round(position.y),
+          companion_window_width: clampedSize.width,
+          companion_window_height: clampedSize.height,
+        },
+      });
+    } catch {
+      // Window persistence is best-effort; interaction should never fail because saving failed.
+    }
+  };
+  const scheduleCompanionWindowPersist = () => {
+    if (!companionWindowVisible || restoringCompanionWindow) return;
+    if (persistWindowTimer !== null) {
+      window.clearTimeout(persistWindowTimer);
+    }
+    persistWindowTimer = window.setTimeout(() => {
+      persistWindowTimer = null;
+      persistCompanionWindowBounds();
+    }, 500);
+  };
   let controlsHideTimer: number | null = null;
   const hideControls = () => {
     if (controlsHideTimer !== null) {
@@ -1212,6 +1270,7 @@ async function buildCompanionView() {
       if (resizeHandle.hasPointerCapture(pointerId)) {
         resizeHandle.releasePointerCapture(pointerId);
       }
+      scheduleCompanionWindowPersist();
     };
     onMove = (moveEvent: PointerEvent) => {
       if (!active || !startLogical) return;
@@ -1243,9 +1302,15 @@ async function buildCompanionView() {
     }
   });
 
-  currentWindow.setSize(new LogicalSize(COMPANION_DEFAULT_SIZE.width, COMPANION_DEFAULT_SIZE.height)).catch(() => {});
-  currentWindow.onMoved(updateDialogPlacement).catch(() => {});
-  currentWindow.onResized(updateDialogPlacement).catch(() => {});
+  await restoreCompanionWindowBounds();
+  currentWindow.onMoved(() => {
+    updateDialogPlacement();
+    scheduleCompanionWindowPersist();
+  }).catch(() => {});
+  currentWindow.onResized(() => {
+    updateDialogPlacement();
+    scheduleCompanionWindowPersist();
+  }).catch(() => {});
   currentWindow.onFocusChanged(({ payload }) => {
     if (!payload && alwaysOnTop) {
       invoke("set_companion_always_on_top", { enabled: true }).catch(() => {});
@@ -1259,6 +1324,10 @@ async function buildCompanionView() {
   listen<boolean>("companion-visible-changed", (event) => {
     companionWindowVisible = event.payload;
     if (!companionWindowVisible) {
+      if (persistWindowTimer !== null) {
+        window.clearTimeout(persistWindowTimer);
+        persistWindowTimer = null;
+      }
       dialogVisible = false;
       inFlight = false;
       hideControls();

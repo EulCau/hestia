@@ -239,10 +239,10 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 ./frontend/node_modules/.bin/tauri dev
 | 4 | GPU Resource Manager / Model Auto-Load | Done |
 | 5 | Multimodal (screenshots, ComfyUI, vision) | Done (MVP) |
 | 6 | Initiative system | Done (MVP) |
-| 8 | Desktop companion window | Done (hardened MVP) |
+| 8 | Desktop companion window | Done (hardened MVP + bounds persistence) |
 | 7 | Plugin boundary + packaging | Pending |
 
-Recommended next step: add persisted companion position/size or Live2D expression events before Plugin Boundary. Phase 8 now has the second-window lifecycle, placeholder avatar, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, and local dialogue bubble.
+Recommended next step: polish the companion dialogue lifecycle or add the Live2D expression event skeleton before Plugin Boundary. Phase 8 now has the second-window lifecycle, placeholder avatar, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, and persisted companion position/size.
 
 Live2D/VRM remain rendering upgrades after the companion window contract is stable.
 
@@ -294,6 +294,7 @@ Frontend behavior:
 | Tray icon and menu | `src-tauri/src/lib.rs` | Done |
 | Main-window backend restart control | `frontend/src/main.ts` | Done |
 | Initiative hot config reload | `src-tauri/src/lib.rs` | Done |
+| Companion position/size persistence | `config/default.toml`, `src-tauri/src/config.rs`, `frontend/src/main.ts` | Done |
 
 Behavior:
 - The main window remains the chat/settings control surface.
@@ -307,6 +308,7 @@ Behavior:
 - Always-on-top is set through Tauri and reapplied on focus loss, but true global stacking can still be limited by Wayland compositors.
 - The tray left-click opens chat. The tray menu opens chat/settings/companion, restarts managed backend processes, or quits.
 - Initiative settings are hot-read before evaluation, so proactive speech enable/disable applies immediately.
+- The companion window restores configured bounds on startup and persists drag/resize changes to `config/user.toml`.
 
 ---
 

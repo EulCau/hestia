@@ -10,6 +10,10 @@ enabled = true
 image_path = "companion-cat-placeholder.png"
 model_type = "placeholder"
 
+[companion.window]
+width = 260
+height = 380
+
 [runtime]
 job_timeout_ms = 30000
 max_concurrent_remote_jobs = 2

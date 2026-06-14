@@ -383,14 +383,15 @@ Or via env var: `export DEEPSEEK_API_KEY=sk-...`
 | Independent dialogue window with adaptive placement | Done |
 | Tray icon/menu and hide-on-close behavior | Done |
 | Initiative hot config reload | Done |
+| Companion position/size persistence | Done |
 
-The companion window starts hidden. The main window controls it with `set_companion_visible`. The companion has hover controls, and the separate `companion_dialog` window follows it using top, bottom, right, then left placement so it avoids overlapping the avatar when screen space allows. The dialogue window can also be shown/hidden through `set_companion_dialog_visible` if frontend window APIs fail. Blocked automatic initiative checks stay silent. Closing main, companion, or dialog hides the window; if all are hidden, managed backend child processes are stopped while the tray process remains alive.
+The companion window starts hidden. The main window controls it with `set_companion_visible`. The companion restores saved bounds at startup, persists drag/resize changes to `config/user.toml`, has hover controls, and the separate `companion_dialog` window follows it using top, bottom, right, then left placement so it avoids overlapping the avatar when screen space allows. The dialogue window can also be shown/hidden through `set_companion_dialog_visible` if frontend window APIs fail. Blocked automatic initiative checks stay silent. Closing main, companion, or dialog hides the window; if all are hidden, managed backend child processes are stopped while the tray process remains alive.
 
 ## 11. Next Phases (from work-order.md)
 
 | Phase | Description | Key New Components |
 |---|---|---|
-| 8 polish | Companion polish | click-through body, persisted position/size, better bubble lifecycle |
+| 8 polish | Companion polish | click-through body, better bubble lifecycle |
 | Live2D upgrade | Animated avatar | Live2D adapter, expression events, mouse tracking |
 | 7 | Plugin Boundary | Plugin manifest, permission model, event contract |
 

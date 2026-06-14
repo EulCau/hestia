@@ -5,6 +5,8 @@ use tracing::info;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppConfig {
     pub app: AppSection,
+    #[serde(default)]
+    pub companion: CompanionSection,
     pub runtime: RuntimeSection,
     #[serde(default)]
     pub remote_api: RemoteApiConfig,
@@ -69,6 +71,51 @@ impl Default for AvatarSection {
             enabled: true,
             image_path: default_avatar_image_path(),
             model_type: default_avatar_model_type(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompanionSection {
+    #[serde(default)]
+    pub window: CompanionWindowSection,
+}
+
+impl Default for CompanionSection {
+    fn default() -> Self {
+        Self {
+            window: CompanionWindowSection::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompanionWindowSection {
+    #[serde(default)]
+    pub x: Option<i32>,
+    #[serde(default)]
+    pub y: Option<i32>,
+    #[serde(default = "default_companion_window_width")]
+    pub width: u32,
+    #[serde(default = "default_companion_window_height")]
+    pub height: u32,
+}
+
+fn default_companion_window_width() -> u32 {
+    260
+}
+
+fn default_companion_window_height() -> u32 {
+    380
+}
+
+impl Default for CompanionWindowSection {
+    fn default() -> Self {
+        Self {
+            x: None,
+            y: None,
+            width: default_companion_window_width(),
+            height: default_companion_window_height(),
         }
     }
 }
@@ -435,6 +482,7 @@ pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
 pub fn config_snapshot(c: &AppConfig) -> serde_json::Value {
     serde_json::json!({
         "app": { "name": c.app.name, "environment": c.app.environment, "theme": { "mode": c.app.theme.mode }, "avatar": { "enabled": c.app.avatar.enabled, "image_path": c.app.avatar.image_path, "model_type": c.app.avatar.model_type } },
+        "companion": { "window": { "x": c.companion.window.x, "y": c.companion.window.y, "width": c.companion.window.width, "height": c.companion.window.height } },
         "remote_api": { "base_url": c.remote_api.base_url, "model": c.remote_api.model, "has_api_key": c.remote_api.api_key.is_some() || std::env::var(&c.remote_api.api_key_env).is_ok() },
         "local_llm": { "backend": c.local_llm.backend, "base_url": c.local_llm.base_url, "model": c.local_llm.model, "enabled": c.local_llm.enabled, "available": c.local_llm.enabled, "auto_load": c.local_llm.auto_load, "models_dir": c.local_llm.models_dir, "load_command": c.local_llm.load_command, "unload_command": c.local_llm.unload_command },
         "persona_rewrite": { "enabled": c.persona_rewrite.enabled, "temperature": c.persona_rewrite.temperature },
@@ -604,6 +652,18 @@ pub fn update_user_config(updates: serde_json::Value) -> Result<(), Box<dyn std:
         }
         if let Some(v) = updates.get("initiative_cooldown_ms") {
             upsert("initiative", "cooldown_ms", v);
+        }
+        if let Some(v) = updates.get("companion_window_x") {
+            upsert("companion.window", "x", v);
+        }
+        if let Some(v) = updates.get("companion_window_y") {
+            upsert("companion.window", "y", v);
+        }
+        if let Some(v) = updates.get("companion_window_width") {
+            upsert("companion.window", "width", v);
+        }
+        if let Some(v) = updates.get("companion_window_height") {
+            upsert("companion.window", "height", v);
         }
     }
     std::fs::write(&up, toml::to_string_pretty(&cur)?)?;
