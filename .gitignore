@@ -1,0 +1,75 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.codex/
+.agents/
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+
+# Logs / runtime state
+logs/*
+*.log
+*.pid
+*.db
+*.sqlite
+*.sqlite3
+*.db-shm
+*.db-wal
+data/cache/*
+data/memory/*
+data/screenshots/*
+data/prompts/*
+data/artifacts/*
+
+# Secrets
+.env
+.env.*
+!.env.example
+config/secrets.*
+config/*local*
+
+# Models / large artifacts
+models/*
+*.safetensors
+*.ckpt
+*.gguf
+*.onnx
+*.pt
+*.pth
+
+# Rust / Tauri
+target/
+src-tauri/gen/
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Python sidecar tools
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# CMake / native builds
+cmake-build-*/
+build*/
+compile_commands.json
+
+# Test / coverage
+.pytest_cache/
+.coverage
+coverage/
+config/user.toml

@@ -1,0 +1,96 @@
+[app]
+name = "Hestia"
+environment = "development"
+
+[app.theme]
+mode = "system"
+
+[app.avatar]
+enabled = true
+image_path = "companion-cat-placeholder.png"
+model_type = "placeholder"
+
+[runtime]
+job_timeout_ms = 30000
+max_concurrent_remote_jobs = 2
+max_concurrent_local_gpu_jobs = 1
+
+[remote_api]
+base_url = "https://api.deepseek.com"
+api_key_env = "DEEPSEEK_API_KEY"
+model = "deepseek-chat"
+
+[models.default_chat]
+worker_id = "deepseek_chat"
+capability = "chat"
+kind = "remote_api"
+enabled = false
+
+[personality]
+default_profile = "default"
+
+[observability]
+job_timeline = true
+prompt_logs = true
+token_usage = true
+vram_logs = true
+
+[multimodal.screenshot]
+enabled = false
+interval_ms = 5000
+retention = 20
+
+[multimodal.comfyui]
+enabled = false
+base_url = "http://127.0.0.1:8188"
+# Linux/macOS example: ~/models/ComfyUI
+# Windows example: %USERPROFILE%\\models\\ComfyUI
+root_dir = ""
+# Point directly to the Python executable inside conda/venv.
+# Linux conda example: ~/miniconda3/envs/comfyui/bin/python
+# Windows conda example: %USERPROFILE%\\miniconda3\\envs\\comfyui\\python.exe
+python_path = ""
+env_type = "venv" # "system" | "venv" | "conda"
+# When true, Hestia starts ComfyUI only when an image job needs it,
+# then terminates the managed process after completion. Existing external
+# ComfyUI processes are used but not terminated.
+auto_start = false
+# Optional full command override. Placeholders: {python}, {root_dir}, {host}, {port}
+launch_command = ""
+workflow_path = "assets/workflows/sdxl.json"
+output_dir = "data/artifacts/images"
+startup_timeout_ms = 20000
+
+[multimodal.vision]
+enabled = false
+base_url = "https://api.moonshot.ai"
+api_key_env = "MOONSHOT_API_KEY"
+model = "kimi-k2.6"
+system_prompt = "You are Kimi, a concise visual understanding assistant for a desktop companion app. Describe what matters for the user's current context. If the image contains text, transcribe the important text."
+default_prompt = "请简要描述这张图片, 重点说明对桌宠对话有用的内容. 如果图中有文字, 摘录关键文字."
+max_image_bytes = 20971520
+
+[initiative]
+enabled = false
+level = 0.3
+cooldown_ms = 600000
+
+[local_llm]
+backend = "llama_cpp"
+base_url = "http://127.0.0.1:8080"
+model = "qwen3-8b"
+enabled = false
+auto_load = false
+# Directory to scan for .gguf model files (default: ~/models on Linux/macOS, %USERPROFILE%\models on Windows).
+# Leave empty to use the OS default.
+models_dir = ""
+# Override the auto-generated load command. Placeholders: {model_path}, {port}, {host}
+load_command = ""
+# Override the auto-generated unload command. Leave empty for default (SIGTERM).
+unload_command = ""
+
+[persona_rewrite]
+enabled = false
+temperature = 0.7
+max_tokens = 2048
+prompt_template = "Polish this message to fit the communication style below. Preserve the original voice, energy, sounds, and actions in parentheses. Only enforce the hard rules listed.\n\nTone: {tone}\nStyle rules:\n- {style_rules}\n\nOriginal: {content}\n\nPolished:"

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Hestia</title>
+    <style>
+      body { margin:0; background:#1a1a2e; color:#e0e0e0; font-family:system-ui,sans-serif; }
+      #app { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; gap:10px; }
+      .ok { color:#a78bfa; font-size:1.2rem; }
+      .err { color:#fca5a5; font-family:monospace; padding:20px; max-width:600px; word-break:break-all; font-size:0.85rem; }
+    </style>
+  </head>
+  <body>
+    <div id="app"><span class="ok">Vite dev server is working</span></div>
+    <script>
+      window.addEventListener("error", function(e) {
+        var ex = document.querySelector(".ok"); if(ex) ex.textContent = "JS ERROR: " + (e.error ? e.error.message : e.message);
+        var d = document.createElement("div"); d.className="err";
+        d.textContent = (e.error && e.error.stack) || e.message || "unknown";
+        document.getElementById("app").appendChild(d);
+      });
+      window.addEventListener("unhandledrejection", function(e) {
+        var ex = document.querySelector(".ok"); if(ex) ex.textContent = "PROMISE ERROR: " + e.reason;
+      });
+    </script>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

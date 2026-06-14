@@ -1,0 +1,13 @@
+{
+  "name": "hestia",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "cd frontend && npm run dev",
+    "build": "cd frontend && npm run build",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.5.0"
+  }
+}

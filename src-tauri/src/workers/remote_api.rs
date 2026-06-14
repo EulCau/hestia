@@ -1,0 +1,200 @@
+use async_trait::async_trait;
+use reqwest::Client;
+use serde::Deserialize;
+use tracing::{info, warn};
+
+use crate::config::RemoteApiConfig;
+use crate::protocol::{Capability, Job, ResourceRequirements};
+
+use super::{Worker, WorkerError};
+
+#[derive(Debug, Deserialize)]
+struct ChatCompletionResponse {
+    choices: Vec<Choice>,
+    usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct Choice {
+    message: ChoiceMessage,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ChoiceMessage {
+    content: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Usage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+    pub total_tokens: u32,
+}
+
+pub struct RemoteApiWorker {
+    id: String,
+    caps: Vec<Capability>,
+    config: RemoteApiConfig,
+    client: Client,
+    api_key: String,
+}
+
+impl RemoteApiWorker {
+    pub fn new(
+        id: impl Into<String>,
+        caps: Vec<Capability>,
+        config: RemoteApiConfig,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
+        // Prefer direct api_key from user config, then fall back to env var
+        let api_key = if let Some(ref key) = config.api_key {
+            if key.is_empty() {
+                return Err("api_key is empty".into());
+            }
+            key.clone()
+        } else {
+            std::env::var(&config.api_key_env).map_err(|_| {
+                format!(
+                    "environment variable {} not set and no api_key in user config",
+                    config.api_key_env
+                )
+            })?
+        };
+
+        Ok(Self {
+            id: id.into(),
+            caps,
+            config,
+            client: Client::new(),
+            api_key,
+        })
+    }
+
+    pub fn usage_from_response(body: &str) -> Option<Usage> {
+        serde_json::from_str::<ChatCompletionResponse>(body)
+            .ok()
+            .and_then(|r| r.usage)
+    }
+}
+
+#[async_trait]
+impl Worker for RemoteApiWorker {
+    fn worker_id(&self) -> &str {
+        &self.id
+    }
+
+    fn capabilities(&self) -> Vec<Capability> {
+        self.caps.clone()
+    }
+
+    fn health_check(&self) -> bool {
+        !self.api_key.is_empty()
+    }
+
+    fn resource_requirements(&self) -> ResourceRequirements {
+        ResourceRequirements {
+            vram_mb: None,
+            gpu_required: false,
+            cpu_cores: None,
+            memory_mb: None,
+        }
+    }
+
+    async fn infer(&self, job: &Job) -> Result<serde_json::Value, WorkerError> {
+        let messages = job.payload["messages"].clone();
+        let model = self.config.model.clone();
+
+        let url = format!("{}/v1/chat/completions", self.config.base_url);
+        info!(
+            worker_id = %self.id,
+            job_id = %job.id,
+            model = %model,
+            "remote API worker sending request"
+        );
+
+        let body = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "stream": false,
+        });
+
+        let response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("HTTP request failed: {}", e),
+            })?;
+
+        let status = response.status();
+        let response_text = response
+            .text()
+            .await
+            .map_err(|e| WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("failed to read response body: {}", e),
+            })?;
+
+        if !status.is_success() {
+            return Err(WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("API returned status {}: {}", status, response_text),
+            });
+        }
+
+        let parsed: ChatCompletionResponse =
+            serde_json::from_str(&response_text).map_err(|e| WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("failed to parse response: {}", e),
+            })?;
+
+        let first_choice = parsed.choices.first();
+        let finish_reason = first_choice
+            .and_then(|c| c.finish_reason.as_deref())
+            .unwrap_or("unknown");
+
+        let content = first_choice
+            .map(|c| c.message.content.clone())
+            .unwrap_or_default();
+
+        if content.is_empty() || finish_reason == "content_filter" {
+            warn!(
+                worker_id = %self.id,
+                job_id = %job.id,
+                finish_reason,
+                response_len = response_text.len(),
+                "API returned empty or filtered response"
+            );
+            // Log a truncated version of the response for debugging
+            let preview: String = response_text.chars().take(500).collect();
+            warn!(raw_preview = %preview, "raw API response (truncated)");
+        }
+
+        let usage = parsed.usage.map(|u| {
+            serde_json::json!({
+                "prompt_tokens": u.prompt_tokens,
+                "completion_tokens": u.completion_tokens,
+                "total_tokens": u.total_tokens,
+            })
+        });
+
+        info!(
+            worker_id = %self.id,
+            job_id = %job.id,
+            response_len = content.len(),
+            "remote API worker response received"
+        );
+
+        Ok(serde_json::json!({
+            "content": content,
+            "usage": usage,
+            "model": model,
+        }))
+    }
+}
