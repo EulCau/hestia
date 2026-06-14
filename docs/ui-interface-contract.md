@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-14 (Phase 8 companion bounds persistence)
+**Last updated:** 2026-06-14 (Phase 8 companion dialogue lifecycle)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -311,6 +311,7 @@ Errors:   string if the companion dialogue window is unavailable or cannot be sh
 Side effect:
   - visible = true: shows the Tauri window labeled `companion_dialog` and pins it always-on-top
   - visible = false: hides the Tauri window labeled `companion_dialog`
+  Emits `companion-dialog-visible-changed` to `companion` and `companion_dialog`.
 Usage:
   Companion dialogue bubble show/hide fallback when frontend window APIs are unavailable or denied.
 ```
@@ -403,11 +404,17 @@ The main window controls companion visibility through:
 invoke("set_companion_visible", { visible: boolean })
 ```
 
-`set_companion_visible` emits `companion-visible-changed` to `main` and `companion`.
+`set_companion_visible` emits `companion-visible-changed` to `main`, `companion`, and `companion_dialog`.
 The main window must update its local show/hide button state from this event, because
 the companion window and tray menu may also change companion visibility. The companion
 window must stop proactive checks and local dialogue-visible state while the event
-payload is `false`.
+payload is `false`. The dialogue window uses the same event to reset any in-flight local
+conversation request state when the companion is hidden.
+
+`set_companion_dialog_visible` and close/hide paths emit `companion-dialog-visible-changed`
+to `companion` and `companion_dialog`. The companion window must treat this event as the
+source of truth for the Bubble button active state, because the dialogue window can be
+hidden by its own close event as well as by companion controls.
 
 The companion dialogue can also be shown/hidden from the backend when frontend window API calls fail:
 
@@ -421,6 +428,8 @@ The companion window is loaded with `/?view=companion`. Its frontend path render
 - a custom lower-right resize handle
 
 The dialogue bubble is loaded in a separate window with `/?view=companion_dialog`. It owns its local message history and calls `send_chat_message` for typed companion dialogue.
+If the bubble or companion is hidden while a typed dialogue request is in flight, the frontend
+invalidates that request generation and ignores its eventual result.
 
 Only the companion window owns automatic initiative checks:
 

@@ -239,10 +239,10 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 ./frontend/node_modules/.bin/tauri dev
 | 4 | GPU Resource Manager / Model Auto-Load | Done |
 | 5 | Multimodal (screenshots, ComfyUI, vision) | Done (MVP) |
 | 6 | Initiative system | Done (MVP) |
-| 8 | Desktop companion window | Done (hardened MVP + bounds persistence) |
+| 8 | Desktop companion window | Done (hardened MVP + lifecycle polish) |
 | 7 | Plugin boundary + packaging | Pending |
 
-Recommended next step: polish the companion dialogue lifecycle or add the Live2D expression event skeleton before Plugin Boundary. Phase 8 now has the second-window lifecycle, placeholder avatar, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, and persisted companion position/size.
+Recommended next step: add the Live2D expression event skeleton before Plugin Boundary. Phase 8 now has the second-window lifecycle, placeholder avatar, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, persisted companion position/size, and synchronized dialogue visibility lifecycle.
 
 Live2D/VRM remain rendering upgrades after the companion window contract is stable.
 
@@ -295,6 +295,7 @@ Frontend behavior:
 | Main-window backend restart control | `frontend/src/main.ts` | Done |
 | Initiative hot config reload | `src-tauri/src/lib.rs` | Done |
 | Companion position/size persistence | `config/default.toml`, `src-tauri/src/config.rs`, `frontend/src/main.ts` | Done |
+| Companion dialogue lifecycle sync | `src-tauri/src/lib.rs`, `frontend/src/main.ts` | Done |
 
 Behavior:
 - The main window remains the chat/settings control surface.
@@ -309,6 +310,7 @@ Behavior:
 - The tray left-click opens chat. The tray menu opens chat/settings/companion, restarts managed backend processes, or quits.
 - Initiative settings are hot-read before evaluation, so proactive speech enable/disable applies immediately.
 - The companion window restores configured bounds on startup and persists drag/resize changes to `config/user.toml`.
+- Dialogue visibility is synchronized through `companion-dialog-visible-changed`; hiding the companion or dialogue invalidates in-flight local dialogue requests.
 
 ---
 

@@ -1103,6 +1103,10 @@ async function buildCompanionView() {
     proactiveBtn.classList.toggle("active", proactiveEnabled);
     dialogBtn.classList.toggle("active", dialogVisible);
   };
+  const setDialogVisibleState = (visible: boolean) => {
+    dialogVisible = visible && companionWindowVisible;
+    updateControlState();
+  };
 
   const updateDialogPlacement = async () => {
     if (!dialogWindow) return;
@@ -1160,33 +1164,22 @@ async function buildCompanionView() {
   };
 
   const showDialog = async (text?: string) => {
-    dialogVisible = true;
-    updateControlState();
+    if (!companionWindowVisible) return;
+    setDialogVisibleState(true);
     await updateDialogPlacement();
-    if (dialogWindow) {
-      await dialogWindow
-        .show()
-        .catch(() => invoke("set_companion_dialog_visible", { visible: true }).catch(() => {}));
-      await dialogWindow.setAlwaysOnTop(alwaysOnTop).catch(() => {});
-    } else {
-      await invoke("set_companion_dialog_visible", { visible: true }).catch(() => {});
-    }
+    await invoke("set_companion_dialog_visible", { visible: true }).catch(() => dialogWindow?.show().catch(() => {}));
+    await dialogWindow?.setAlwaysOnTop(alwaysOnTop).catch(() => {});
     updateDialogPlacement();
     if (text?.trim()) {
-      currentWindow.emitTo("companion_dialog", "companion-message", text.trim()).catch(() => {});
+      window.setTimeout(() => {
+        currentWindow.emitTo("companion_dialog", "companion-message", text.trim()).catch(() => {});
+      }, 50);
     }
   };
 
   const hideDialog = async () => {
-    dialogVisible = false;
-    updateControlState();
-    if (dialogWindow) {
-      await dialogWindow
-        .hide()
-        .catch(() => invoke("set_companion_dialog_visible", { visible: false }).catch(() => {}));
-    } else {
-      await invoke("set_companion_dialog_visible", { visible: false }).catch(() => {});
-    }
+    setDialogVisibleState(false);
+    await invoke("set_companion_dialog_visible", { visible: false }).catch(() => dialogWindow?.hide().catch(() => {}));
   };
 
   const requestCompanionInitiative = async () => {
@@ -1241,7 +1234,7 @@ async function buildCompanionView() {
   });
   closeBtn.addEventListener("click", () => {
     companionWindowVisible = false;
-    dialogVisible = false;
+    setDialogVisibleState(false);
     updateControlState();
     hideControls();
     invoke("set_companion_visible", { visible: false }).catch(() => {});
@@ -1328,10 +1321,16 @@ async function buildCompanionView() {
         window.clearTimeout(persistWindowTimer);
         persistWindowTimer = null;
       }
-      dialogVisible = false;
+      setDialogVisibleState(false);
       inFlight = false;
       hideControls();
       updateControlState();
+    }
+  }).catch(() => {});
+  listen<boolean>("companion-dialog-visible-changed", (event) => {
+    setDialogVisibleState(event.payload);
+    if (event.payload && companionWindowVisible) {
+      updateDialogPlacement();
     }
   }).catch(() => {});
   updateControlState();
@@ -1350,6 +1349,7 @@ async function buildCompanionDialogView() {
 
   const companionHistory: HistoryEntry[] = [];
   let inFlight = false;
+  let requestGeneration = 0;
   const panel = el("section", { class: "companion-dialog-panel", "aria-live": "polite" });
   const messages = el("div", { class: "companion-dialogue-messages" });
   const input = el("textarea", {
@@ -1371,17 +1371,21 @@ async function buildCompanionDialogView() {
     appendDialogMessage("user", text);
     companionHistory.push({ role: "user", content: text });
     inFlight = true;
+    const generation = ++requestGeneration;
     input.disabled = true;
     sendBtn.disabled = true;
     try {
       const raw = await invoke<string>("send_chat_message", { message: text, history: companionHistory });
+      if (generation !== requestGeneration) return;
       const response = JSON.parse(raw) as ChatResponse;
       const content = response.content || "";
       appendDialogMessage("assistant", content);
       companionHistory.push({ role: "assistant", content });
     } catch (error) {
+      if (generation !== requestGeneration) return;
       appendDialogMessage("error", String(error));
     } finally {
+      if (generation !== requestGeneration) return;
       inFlight = false;
       input.disabled = false;
       sendBtn.disabled = false;
@@ -1403,7 +1407,23 @@ async function buildCompanionDialogView() {
   listen<string>("companion-message", (event) => {
     appendDialogMessage("assistant", event.payload);
     companionHistory.push({ role: "assistant", content: event.payload });
-    getCurrentWindow().show().catch(() => {});
+    invoke("set_companion_dialog_visible", { visible: true }).catch(() => getCurrentWindow().show().catch(() => {}));
+  }).catch(() => {});
+  listen<boolean>("companion-visible-changed", (event) => {
+    if (!event.payload) {
+      requestGeneration++;
+      input.disabled = false;
+      sendBtn.disabled = false;
+      inFlight = false;
+    }
+  }).catch(() => {});
+  listen<boolean>("companion-dialog-visible-changed", (event) => {
+    if (!event.payload) {
+      requestGeneration++;
+      input.disabled = false;
+      sendBtn.disabled = false;
+      inFlight = false;
+    }
   }).catch(() => {});
   listen<string>("dialog-placement", (event) => {
     panel.dataset.placement = event.payload;

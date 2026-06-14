@@ -107,6 +107,18 @@ fn hide_window_and_maybe_idle_backend(
     window
         .hide()
         .map_err(|e| format!("failed to hide {label} window: {}", e))?;
+    if label == "companion" {
+        let _ = app.emit_to("main", "companion-visible-changed", false);
+        let _ = app.emit_to("companion", "companion-visible-changed", false);
+        let _ = app.emit_to("companion_dialog", "companion-visible-changed", false);
+    } else if label == "companion_dialog" {
+        let _ = app.emit_to("companion", "companion-dialog-visible-changed", false);
+        let _ = app.emit_to(
+            "companion_dialog",
+            "companion-dialog-visible-changed",
+            false,
+        );
+    }
     let main_visible = app
         .get_webview_window("main")
         .and_then(|window| window.is_visible().ok())
@@ -350,10 +362,19 @@ fn set_companion_visible(app: tauri::AppHandle, visible: bool) -> Result<String,
             dialog
                 .hide()
                 .map_err(|e| format!("failed to hide companion dialog: {}", e))?;
+            let _ = app.emit_to(
+                "companion_dialog",
+                "companion-dialog-visible-changed",
+                false,
+            );
         }
     }
     let _ = app.emit_to("main", "companion-visible-changed", visible);
     let _ = app.emit_to("companion", "companion-visible-changed", visible);
+    let _ = app.emit_to("companion_dialog", "companion-visible-changed", visible);
+    if !visible {
+        let _ = app.emit_to("companion", "companion-dialog-visible-changed", false);
+    }
     Ok("ok".into())
 }
 
@@ -372,6 +393,12 @@ fn set_companion_dialog_visible(app: tauri::AppHandle, visible: bool) -> Result<
             .hide()
             .map_err(|e| format!("failed to hide companion dialog: {}", e))?;
     }
+    let _ = app.emit_to("companion", "companion-dialog-visible-changed", visible);
+    let _ = app.emit_to(
+        "companion_dialog",
+        "companion-dialog-visible-changed",
+        visible,
+    );
     Ok("ok".into())
 }
 
@@ -1164,6 +1191,19 @@ pub fn run() {
                         if let Some(dialog) = app.get_webview_window("companion_dialog") {
                             let _ = dialog.hide();
                         }
+                        let _ = app.emit_to("companion", "companion-dialog-visible-changed", false);
+                        let _ = app.emit_to(
+                            "companion_dialog",
+                            "companion-dialog-visible-changed",
+                            false,
+                        );
+                    } else if window.label() == "companion_dialog" {
+                        let _ = app.emit_to("companion", "companion-dialog-visible-changed", false);
+                        let _ = app.emit_to(
+                            "companion_dialog",
+                            "companion-dialog-visible-changed",
+                            false,
+                        );
                     }
                     if let Err(error) =
                         hide_window_and_maybe_idle_backend(app, &state, window.label())
