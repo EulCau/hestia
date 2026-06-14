@@ -1,7 +1,7 @@
 # Hestia Implementation Summary
 
-**Date:** 2026-06-13
-**Current Phase:** 8 hardened MVP (Desktop Companion Window)
+**Date:** 2026-06-14
+**Current Phase:** 8 hardened MVP + lifecycle polish (Desktop Companion Window)
 
 ---
 
@@ -245,6 +245,12 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 ./frontend/node_modules/.bin/tauri dev
 Recommended next step: add the Live2D expression event skeleton before Plugin Boundary. Phase 8 now has the second-window lifecycle, placeholder avatar, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, persisted companion position/size, and synchronized dialogue visibility lifecycle.
 
 Live2D/VRM remain rendering upgrades after the companion window contract is stable.
+
+Resume note for a new conversation:
+- Start from [docs/HANDOFF.md](/home/eulcau/CXTX/hestia/docs/HANDOFF.md), §10 and §11.
+- Treat [docs/ui-interface-contract.md](/home/eulcau/CXTX/hestia/docs/ui-interface-contract.md), §3.4, as the authoritative companion window/dialogue state contract.
+- The next implementation should add only the Live2D expression event skeleton. Do not add Live2D assets or Plugin Boundary work until the event names and placeholder adapter behavior are stable.
+- Validate with `cargo fmt --manifest-path src-tauri/Cargo.toml`, `cargo test --manifest-path src-tauri/Cargo.toml`, `npm run build`, and `./frontend/node_modules/.bin/tauri build --debug --no-bundle`.
 
 ## 6.1 Phase 6: Initiative System (2026-06-13)
 

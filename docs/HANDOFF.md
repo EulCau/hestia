@@ -1,7 +1,7 @@
 # Hestia — Handoff Document
 
-**Date:** 2026-06-13
-**Current Phase:** 8 hardened MVP (Desktop Companion Window)
+**Date:** 2026-06-14
+**Current Phase:** 8 hardened MVP + lifecycle polish (Desktop Companion Window)
 **Codebase:** Rust + TypeScript, 23 passing tests
 
 ---
@@ -404,22 +404,38 @@ Do not do yet:
 
 ### Quick Start for the Next Codex Window
 
+This section is the resume point when continuing in a new conversation. Read it before
+making changes, then inspect only the files relevant to the selected next task.
+
 Read these first:
 1. [AGENTS.md](/home/eulcau/CXTX/hestia/AGENTS.md)
-2. [docs/work-order.md](/home/eulcau/CXTX/hestia/docs/work-order.md), Phase 8 section
-3. [docs/desktop-companion.md](/home/eulcau/CXTX/hestia/docs/desktop-companion.md), especially §2.5 and §6.1
-4. [docs/ui-interface-contract.md](/home/eulcau/CXTX/hestia/docs/ui-interface-contract.md), §12.1 companion trigger contract
+2. [docs/HANDOFF.md](/home/eulcau/CXTX/hestia/docs/HANDOFF.md), §10 and §11
+3. [docs/ui-interface-contract.md](/home/eulcau/CXTX/hestia/docs/ui-interface-contract.md), §3.4 and §12.1
+4. [docs/desktop-companion.md](/home/eulcau/CXTX/hestia/docs/desktop-companion.md), §3.3 and §4
 
 Likely first files to inspect:
-- [src-tauri/src/lib.rs](/home/eulcau/CXTX/hestia/src-tauri/src/lib.rs): Tauri builder, invoke handler, app state, initiative commands
-- [src-tauri/tauri.conf.json](/home/eulcau/CXTX/hestia/src-tauri/tauri.conf.json): main window configuration
-- [frontend/src/main.ts](/home/eulcau/CXTX/hestia/frontend/src/main.ts): current main UI, placeholder avatar adapter, initiative button
-- [frontend/src/style.css](/home/eulcau/CXTX/hestia/frontend/src/style.css): layout and theme tokens
+- [frontend/src/main.ts](/home/eulcau/CXTX/hestia/frontend/src/main.ts): main UI, companion view, companion dialogue view, initiative timer, bounds persistence
+- [src-tauri/src/lib.rs](/home/eulcau/CXTX/hestia/src-tauri/src/lib.rs): Tauri commands, tray, close/hide lifecycle, companion visibility events
+- [src-tauri/src/config.rs](/home/eulcau/CXTX/hestia/src-tauri/src/config.rs): `ConfigSnapshot`, `update_settings`, `[companion.window]`
+- [config/default.toml](/home/eulcau/CXTX/hestia/config/default.toml): default companion bounds and runtime settings
+- [src-tauri/tauri.conf.json](/home/eulcau/CXTX/hestia/src-tauri/tauri.conf.json): `main`, `companion`, and `companion_dialog` window definitions
+
+Stable companion contracts:
+- Main chat does not speak proactively on a timer.
+- Only the `companion` frontend calls `request_initiative_message` with `trigger = "companion_timer"`.
+- `companion-visible-changed` is the source of truth for companion show/hide state.
+- `companion-dialog-visible-changed` is the source of truth for Bubble button state and dialogue request cleanup.
+- Companion position and size are restored from `[companion.window]` and persisted through `update_settings`.
+
+Recommended next task:
+- Add the Live2D expression event skeleton without adding Live2D assets yet. Define the event flow first, then wire the placeholder adapter to consume no-op `expression`, `motion`, `speak_start`, `speak_stop`, `look_at`, and `idle` events.
 
 Validation commands:
 ```bash
+cargo fmt --manifest-path src-tauri/Cargo.toml
 cargo test --manifest-path src-tauri/Cargo.toml
 npm run build
+./frontend/node_modules/.bin/tauri build --debug --no-bundle
 ```
 
 ---

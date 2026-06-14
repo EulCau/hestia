@@ -1,7 +1,7 @@
 # Desktop Companion — Technical Design
 
-**Date:** 2026-06-13
-**Status:** Next implementation target after Phase 6
+**Date:** 2026-06-14
+**Status:** Phase 8 companion MVP is implemented; next step is the Live2D expression event skeleton
 
 ---
 
@@ -28,7 +28,7 @@ Desktop companion window:
   - all proactive speech is still gated by InitiativeRuntime
 ```
 
-The next implementation should ship the companion window lifecycle first with the existing placeholder avatar. Live2D and VRM are later rendering upgrades.
+The companion window lifecycle has shipped with the existing placeholder avatar. Live2D and VRM remain rendering upgrades. The next implementation should define and wire the expression/motion event skeleton before adding model assets or external runtimes.
 
 ---
 
@@ -340,35 +340,52 @@ Backend Persona State
 
 ## 6. Implementation Plan
 
-### 6.1 MVP: Placeholder Companion Window (recommended next)
+### 6.1 MVP: Placeholder Companion Window (completed)
 
-1. Add a second Tauri window labeled `companion`.
-2. Add a minimal frontend companion entry/view.
-3. Render the existing placeholder avatar in that window.
-4. Add show/hide control from the main window.
-5. In companion view only, run a conservative timer that calls `request_initiative_message` with `trigger = "companion_timer"`.
-6. Render allowed proactive text in the companion surface or forward it to the main chat.
-7. Keep main-window automatic proactive speech disabled.
+Implemented:
+1. A transparent Tauri window labeled `companion`.
+2. A separate transparent dialogue window labeled `companion_dialog`.
+3. A companion-only frontend view using the placeholder avatar.
+4. Show/hide controls from the main window and tray.
+5. Companion-owned initiative timer with `trigger = "companion_timer"`.
+6. Hover toolbar for always-on-top, proactive speech, chat, dialogue, and close.
+7. Drag, lower-right resize, persisted position/size, and adaptive dialogue placement.
+8. Dialogue lifecycle synchronization through `companion-dialog-visible-changed`.
+9. Main-window automatic proactive speech disabled.
 
 Validation:
 - Main window never emits automatic proactive messages.
 - Manual sparkles button still works as user-initiated topic opening.
 - Companion timer calls are blocked when `initiative.enabled = false`.
 - Companion timer calls are blocked during cooldown or recent user activity.
-- `cargo test` and `npm run build` pass.
+- Dialogue direct close, companion hide, and proactive-message show paths keep Bubble state synchronized.
+- `cargo fmt --manifest-path src-tauri/Cargo.toml`, `cargo test --manifest-path src-tauri/Cargo.toml`, `npm run build`, and `./frontend/node_modules/.bin/tauri build --debug --no-bundle` pass.
 
-### 6.2 Phase 1: Live2D Companion (estimated 3-5 days after MVP)
+### 6.2 Phase 1: Live2D Companion (next)
 
-1. Create second Tauri window with transparent + always-on-top properties
-2. Integrate Live2D Cubism SDK for Web (npm: `@cubism/cubism-sdk`)
-3. Implement `AvatarAdapter` with Live2D:
+First sub-step: add the event skeleton without adding Live2D assets yet.
+
+1. Define a narrow companion avatar event contract:
+   - `expression`
+   - `motion`
+   - `speak_start`
+   - `speak_stop`
+   - `look_at`
+   - `idle`
+2. Add a placeholder adapter `onEvent(...)` implementation that accepts these events as no-ops or simple CSS state changes.
+3. Emit local frontend events from existing lifecycle points, for example dialogue message arrival -> `speak_start` / `speak_stop`, blocked idle timer -> `idle`.
+4. Document the event payloads in `docs/ui-interface-contract.md`.
+5. Only after this event contract is stable, integrate Live2D Cubism SDK for Web.
+
+Runtime integration after the skeleton:
+
+1. Integrate Live2D Cubism SDK for Web.
+2. Implement `AvatarAdapter` with Live2D:
    - `mount(container)`: initialize Cubism framework, load model
    - `unmount()`: dispose framework
    - `onEvent(type, data)`: trigger motions/expressions
-4. Add mouse tracking (character eyes follow cursor)
-5. Backend emits expression events based on persona state
-6. System tray integration (show/hide companion)
-7. Window drag handler for repositioning
+3. Add mouse tracking (character eyes follow cursor)
+4. Map backend/persona/UI events to expressions and motions.
 
 ### 6.3 Phase 2: Unity + VRM (estimated 1-2 weeks, optional)
 
