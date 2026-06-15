@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-14 (Phase 8 companion dialogue lifecycle)
+**Last updated:** 2026-06-15 (Phase 8 companion avatar event skeleton)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -423,7 +423,7 @@ invoke("set_companion_dialog_visible", { visible: boolean })
 ```
 
 The companion window is loaded with `/?view=companion`. Its frontend path renders only:
-- the configured placeholder avatar image
+- the configured avatar through `AvatarAdapter.mount(...)`
 - a hover-only toolbar with always-on-top, proactive speech, open chat, dialogue, and close controls
 - a custom lower-right resize handle
 
@@ -441,6 +441,42 @@ invoke("request_initiative_message", {
 ```
 
 Blocked timer decisions remain silent in the companion UI. The main window must not call `request_initiative_message` with timer-like automatic triggers.
+
+Companion avatar events:
+
+The companion window owns the active avatar adapter and listens for local frontend events named `companion-avatar-event`. The event payload is:
+
+```typescript
+type CompanionAvatarEventType =
+  | "expression"
+  | "motion"
+  | "speak_start"
+  | "speak_stop"
+  | "look_at"
+  | "idle";
+
+interface CompanionAvatarEventPayload {
+  name?: string;
+  weight?: number;
+  duration_ms?: number;
+  transition_ms?: number;
+  x?: number; // normalized look-at coordinate in [-1, 1]
+  y?: number; // normalized look-at coordinate in [-1, 1]
+}
+
+interface CompanionAvatarEvent {
+  type: CompanionAvatarEventType;
+  data?: CompanionAvatarEventPayload;
+}
+```
+
+Current event sources:
+- Companion proactive timer request start emits `expression` with `name = "thinking"`.
+- Proactive or dialogue assistant text emits `speak_start` with an approximate `duration_ms`, followed by `speak_stop` from the companion window timer.
+- Companion pointer movement emits `look_at` with normalized coordinates.
+- Companion hide, dialogue hide, blocked initiative, or model error emits `idle` or an error expression.
+
+The placeholder adapter maps these events to CSS state changes only. Future Live2D, Spine, or VRM adapters should consume the same event contract and must not call backend models directly.
 
 Companion dialogue bubble placement:
 - Default placement is above the avatar.

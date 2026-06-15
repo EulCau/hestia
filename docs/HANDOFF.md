@@ -1,6 +1,6 @@
 # Hestia — Handoff Document
 
-**Date:** 2026-06-14
+**Date:** 2026-06-15
 **Current Phase:** 8 hardened MVP + lifecycle polish (Desktop Companion Window)
 **Codebase:** Rust + TypeScript, 23 passing tests
 
@@ -425,10 +425,11 @@ Stable companion contracts:
 - Only the `companion` frontend calls `request_initiative_message` with `trigger = "companion_timer"`.
 - `companion-visible-changed` is the source of truth for companion show/hide state.
 - `companion-dialog-visible-changed` is the source of truth for Bubble button state and dialogue request cleanup.
+- `companion-avatar-event` carries avatar renderer events: `expression`, `motion`, `speak_start`, `speak_stop`, `look_at`, and `idle`.
 - Companion position and size are restored from `[companion.window]` and persisted through `update_settings`.
 
 Recommended next task:
-- Add the Live2D expression event skeleton without adding Live2D assets yet. Define the event flow first, then wire the placeholder adapter to consume no-op `expression`, `motion`, `speak_start`, `speak_stop`, `look_at`, and `idle` events.
+- Integrate Live2D Cubism SDK for Web against the existing `AvatarAdapter.onEvent(...)` contract. Do not add Plugin Boundary work until the Live2D adapter behavior is stable.
 
 Validation commands:
 ```bash

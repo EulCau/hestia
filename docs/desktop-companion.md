@@ -1,7 +1,7 @@
 # Desktop Companion — Technical Design
 
-**Date:** 2026-06-14
-**Status:** Phase 8 companion MVP is implemented; next step is the Live2D expression event skeleton
+**Date:** 2026-06-15
+**Status:** Phase 8 companion MVP is implemented; the Live2D expression event skeleton is in place
 
 ---
 
@@ -28,7 +28,7 @@ Desktop companion window:
   - all proactive speech is still gated by InitiativeRuntime
 ```
 
-The companion window lifecycle has shipped with the existing placeholder avatar. Live2D and VRM remain rendering upgrades. The next implementation should define and wire the expression/motion event skeleton before adding model assets or external runtimes.
+The companion window lifecycle has shipped with the existing placeholder avatar. The avatar event skeleton now routes expression, motion, speaking, look-at, and idle events through `AvatarAdapter.onEvent(...)`. Live2D and VRM remain rendering upgrades.
 
 ---
 
@@ -361,21 +361,28 @@ Validation:
 - Dialogue direct close, companion hide, and proactive-message show paths keep Bubble state synchronized.
 - `cargo fmt --manifest-path src-tauri/Cargo.toml`, `cargo test --manifest-path src-tauri/Cargo.toml`, `npm run build`, and `./frontend/node_modules/.bin/tauri build --debug --no-bundle` pass.
 
-### 6.2 Phase 1: Live2D Companion (next)
+### 6.2 Phase 1: Live2D Companion
 
-First sub-step: add the event skeleton without adding Live2D assets yet.
+Completed first sub-step: the event skeleton is available without adding Live2D assets yet.
 
-1. Define a narrow companion avatar event contract:
+Implemented:
+
+1. Defined a narrow companion avatar event contract:
    - `expression`
    - `motion`
    - `speak_start`
    - `speak_stop`
    - `look_at`
    - `idle`
-2. Add a placeholder adapter `onEvent(...)` implementation that accepts these events as no-ops or simple CSS state changes.
-3. Emit local frontend events from existing lifecycle points, for example dialogue message arrival -> `speak_start` / `speak_stop`, blocked idle timer -> `idle`.
-4. Document the event payloads in `docs/ui-interface-contract.md`.
-5. Only after this event contract is stable, integrate Live2D Cubism SDK for Web.
+2. Added a placeholder adapter `onEvent(...)` implementation that maps events to simple CSS state changes.
+3. Emits frontend events from existing lifecycle points:
+   - proactive request start -> `expression: thinking`
+   - proactive/dialogue message arrival -> `speak_start`
+   - speech timeout, hide, or blocked timer -> `idle`
+   - companion pointer movement -> `look_at`
+4. Documented the event payloads in `docs/ui-interface-contract.md`.
+
+Only after this event contract remains stable should Live2D Cubism SDK for Web be integrated.
 
 Runtime integration after the skeleton:
 
