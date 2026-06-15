@@ -702,6 +702,61 @@ button {
   -webkit-user-drag: none;
 }
 
+.avatar-container[data-avatar-adapter="placeholder"] img,
+.companion-avatar[data-avatar-adapter="placeholder"] img {
+  transform: translate(
+    calc(var(--avatar-look-x, 0) * 4px),
+    calc(var(--avatar-look-y, 0) * 3px)
+  );
+  transition:
+    filter 180ms ease,
+    opacity 180ms ease,
+    transform 180ms ease;
+}
+
+.avatar-container[data-avatar-state="thinking"] img,
+.companion-avatar[data-avatar-state="thinking"] img {
+  filter: saturate(0.9) brightness(0.95);
+  transform: translate(
+      calc(var(--avatar-look-x, 0) * 4px),
+      calc(var(--avatar-look-y, 0) * 3px)
+    )
+    rotate(-1deg);
+}
+
+.avatar-container[data-avatar-state="speaking"] img,
+.companion-avatar[data-avatar-state="speaking"] img {
+  animation: companion-speak 720ms ease-in-out infinite;
+}
+
+.avatar-container[data-avatar-state="confused"] img,
+.companion-avatar[data-avatar-state="confused"] img {
+  filter: saturate(0.85);
+  transform: translate(
+      calc(var(--avatar-look-x, 0) * 4px),
+      calc(var(--avatar-look-y, 0) * 3px)
+    )
+    rotate(2deg);
+}
+
+@keyframes companion-speak {
+  0%,
+  100% {
+    transform: translate(
+        calc(var(--avatar-look-x, 0) * 4px),
+        calc(var(--avatar-look-y, 0) * 3px)
+      )
+      scale(1);
+  }
+  50% {
+    transform: translate(
+        calc(var(--avatar-look-x, 0) * 4px),
+        calc(var(--avatar-look-y, 0) * 3px - 3px)
+      )
+      scale(1.015);
+  }
+}
+
 .companion-dialog-body #app {
   background: transparent;
 }

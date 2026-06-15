@@ -101,6 +101,22 @@ interface InitiativeResponse {
   decision: InitiativeDecision;
 }
 
+type CompanionAvatarEventType = "expression" | "motion" | "speak_start" | "speak_stop" | "look_at" | "idle";
+
+interface CompanionAvatarEventPayload {
+  name?: string;
+  weight?: number;
+  duration_ms?: number;
+  transition_ms?: number;
+  x?: number;
+  y?: number;
+}
+
+interface CompanionAvatarEvent {
+  type: CompanionAvatarEventType;
+  data?: CompanionAvatarEventPayload;
+}
+
 let lastActivityReport = 0;
 
 const iconPaths = {
@@ -190,15 +206,51 @@ interface AvatarAdapter {
   type: string;
   mount(container: HTMLElement): void;
   unmount(): void;
+  onEvent?(type: CompanionAvatarEventType, data?: CompanionAvatarEventPayload): void;
 }
 
 function createAvatarAdapter(_modelType: string, imagePath: string): AvatarAdapter {
+  let container: HTMLElement | null = null;
+  let image: HTMLImageElement | null = null;
+  const setState = (state: string) => {
+    if (!container) return;
+    container.dataset.avatarState = state;
+  };
   return {
     type: "placeholder",
-    mount(container: HTMLElement) {
-      container.append(el("img", { src: `/${imagePath}`, alt: "Hestia companion" }));
+    mount(mountPoint: HTMLElement) {
+      container = mountPoint;
+      image = el("img", { src: `/${imagePath}`, alt: "Hestia companion", draggable: "false" }) as HTMLImageElement;
+      mountPoint.append(image);
+      container.dataset.avatarAdapter = "placeholder";
+      setState("idle");
     },
-    unmount() {},
+    unmount() {
+      image?.remove();
+      if (container) {
+        delete container.dataset.avatarAdapter;
+        delete container.dataset.avatarState;
+        container.style.removeProperty("--avatar-look-x");
+        container.style.removeProperty("--avatar-look-y");
+      }
+      image = null;
+      container = null;
+    },
+    onEvent(type: CompanionAvatarEventType, data?: CompanionAvatarEventPayload) {
+      if (!container) return;
+      if (type === "look_at") {
+        const x = Math.max(-1, Math.min(1, data?.x ?? 0));
+        const y = Math.max(-1, Math.min(1, data?.y ?? 0));
+        container.style.setProperty("--avatar-look-x", String(x));
+        container.style.setProperty("--avatar-look-y", String(y));
+        return;
+      }
+      if (type === "expression" || type === "motion") {
+        setState(data?.name || type);
+        return;
+      }
+      setState(type === "speak_start" ? "speaking" : type === "speak_stop" ? "idle" : type);
+    },
   };
 }
 
@@ -990,7 +1042,8 @@ async function buildCompanionView() {
     "data-tauri-drag-region": "",
   });
   const resizeHandle = el("button", { class: "companion-resize", type: "button", title: "Resize", "aria-label": "Resize companion" });
-  avatar.append(el("img", { src: `/${companionImagePath(cfg)}`, alt: "Hestia companion", draggable: "false" }));
+  const avatarAdapter = createAvatarAdapter(cfg.app.avatar.model_type, companionImagePath(cfg));
+  avatarAdapter.mount(avatar);
   shell.append(controls, avatar, resizeHandle);
   app.append(shell);
 
@@ -1047,6 +1100,29 @@ async function buildCompanionView() {
       persistCompanionWindowBounds();
     }, 500);
   };
+  let avatarSpeakTimer: number | null = null;
+  const stopAvatarSpeechTimer = () => {
+    if (avatarSpeakTimer !== null) {
+      window.clearTimeout(avatarSpeakTimer);
+      avatarSpeakTimer = null;
+    }
+  };
+  const dispatchAvatarEvent = (event: CompanionAvatarEvent) => {
+    avatarAdapter.onEvent?.(event.type, event.data);
+    if (event.type === "speak_start") {
+      stopAvatarSpeechTimer();
+      const durationMs = Math.max(600, Math.min(8000, event.data?.duration_ms ?? 1800));
+      avatarSpeakTimer = window.setTimeout(() => {
+        avatarSpeakTimer = null;
+        dispatchAvatarEvent({ type: "speak_stop" });
+      }, durationMs);
+      return;
+    }
+    if (event.type === "speak_stop" || event.type === "idle") {
+      stopAvatarSpeechTimer();
+    }
+  };
+  const speechDurationForText = (text: string) => Math.max(1200, Math.min(8000, text.length * 70));
   let controlsHideTimer: number | null = null;
   const hideControls = () => {
     if (controlsHideTimer !== null) {
@@ -1066,7 +1142,14 @@ async function buildCompanionView() {
     }
   };
 
-  shell.addEventListener("pointermove", () => showControls());
+  shell.addEventListener("pointermove", (event) => {
+    showControls();
+    const rect = avatar.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    const x = ((event.clientX - rect.left) / rect.width - 0.5) * 2;
+    const y = ((event.clientY - rect.top) / rect.height - 0.5) * 2;
+    dispatchAvatarEvent({ type: "look_at", data: { x, y } });
+  });
   shell.addEventListener("pointerenter", () => showControls());
   shell.addEventListener("pointerleave", hideControls);
   shell.addEventListener("pointerout", (event) => {
@@ -1174,6 +1257,7 @@ async function buildCompanionView() {
       window.setTimeout(() => {
         currentWindow.emitTo("companion_dialog", "companion-message", text.trim()).catch(() => {});
       }, 50);
+      dispatchAvatarEvent({ type: "speak_start", data: { duration_ms: speechDurationForText(text.trim()) } });
     }
   };
 
@@ -1185,6 +1269,7 @@ async function buildCompanionView() {
   const requestCompanionInitiative = async () => {
     if (!companionWindowVisible || !proactiveEnabled || inFlight) return;
     inFlight = true;
+    dispatchAvatarEvent({ type: "expression", data: { name: "thinking" } });
     try {
       const raw = await invoke<string>("request_initiative_message", {
         history: [],
@@ -1193,9 +1278,12 @@ async function buildCompanionView() {
       const response = JSON.parse(raw) as InitiativeResponse;
       if (response.allowed && response.content?.trim()) {
         showDialog(response.content.trim());
+      } else {
+        dispatchAvatarEvent({ type: "idle" });
       }
     } catch {
       // Timer-triggered companion checks stay silent on backend/model errors.
+      dispatchAvatarEvent({ type: "idle" });
     } finally {
       inFlight = false;
     }
@@ -1235,6 +1323,7 @@ async function buildCompanionView() {
   closeBtn.addEventListener("click", () => {
     companionWindowVisible = false;
     setDialogVisibleState(false);
+    dispatchAvatarEvent({ type: "idle" });
     updateControlState();
     hideControls();
     invoke("set_companion_visible", { visible: false }).catch(() => {});
@@ -1323,6 +1412,7 @@ async function buildCompanionView() {
       }
       setDialogVisibleState(false);
       inFlight = false;
+      dispatchAvatarEvent({ type: "idle" });
       hideControls();
       updateControlState();
     }
@@ -1331,9 +1421,15 @@ async function buildCompanionView() {
     setDialogVisibleState(event.payload);
     if (event.payload && companionWindowVisible) {
       updateDialogPlacement();
+    } else {
+      dispatchAvatarEvent({ type: "idle" });
     }
   }).catch(() => {});
+  listen<CompanionAvatarEvent>("companion-avatar-event", (event) => {
+    dispatchAvatarEvent(event.payload);
+  }).catch(() => {});
   updateControlState();
+  dispatchAvatarEvent({ type: "idle" });
   updateDialogPlacement();
   window.setInterval(requestCompanionInitiative, 120000);
 }
@@ -1364,6 +1460,10 @@ async function buildCompanionDialogView() {
     messages.append(message);
     messages.scrollTop = messages.scrollHeight;
   };
+  const emitAvatarEvent = (event: CompanionAvatarEvent) => {
+    getCurrentWindow().emitTo("companion", "companion-avatar-event", event).catch(() => {});
+  };
+  const speechDurationForText = (text: string) => Math.max(1200, Math.min(8000, text.length * 70));
   const sendMessage = async () => {
     const text = input.value.trim();
     if (!text || inFlight) return;
@@ -1371,6 +1471,7 @@ async function buildCompanionDialogView() {
     appendDialogMessage("user", text);
     companionHistory.push({ role: "user", content: text });
     inFlight = true;
+    emitAvatarEvent({ type: "expression", data: { name: "thinking" } });
     const generation = ++requestGeneration;
     input.disabled = true;
     sendBtn.disabled = true;
@@ -1381,9 +1482,11 @@ async function buildCompanionDialogView() {
       const content = response.content || "";
       appendDialogMessage("assistant", content);
       companionHistory.push({ role: "assistant", content });
+      emitAvatarEvent({ type: "speak_start", data: { duration_ms: speechDurationForText(content) } });
     } catch (error) {
       if (generation !== requestGeneration) return;
       appendDialogMessage("error", String(error));
+      emitAvatarEvent({ type: "expression", data: { name: "confused" } });
     } finally {
       if (generation !== requestGeneration) return;
       inFlight = false;
@@ -1415,6 +1518,7 @@ async function buildCompanionDialogView() {
       input.disabled = false;
       sendBtn.disabled = false;
       inFlight = false;
+      emitAvatarEvent({ type: "idle" });
     }
   }).catch(() => {});
   listen<boolean>("companion-dialog-visible-changed", (event) => {
@@ -1423,6 +1527,7 @@ async function buildCompanionDialogView() {
       input.disabled = false;
       sendBtn.disabled = false;
       inFlight = false;
+      emitAvatarEvent({ type: "idle" });
     }
   }).catch(() => {});
   listen<string>("dialog-placement", (event) => {
