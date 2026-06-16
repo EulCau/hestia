@@ -376,6 +376,7 @@ Or via env var: `export DEEPSEEK_API_KEY=sk-...`
 | Main-window show/hide button | Done |
 | Companion-only frontend view | Done |
 | Placeholder anime cat avatar | Done |
+| Live2D avatar adapter MVP | Done |
 | Companion timer calling `request_initiative_message` with `trigger = "companion_timer"` | Done |
 | Main-window automatic proactive speech disabled | Done |
 | Hover toolbar: top, proactive, chat, dialogue | Done |
@@ -393,12 +394,12 @@ The companion window starts hidden. The main window controls it with `set_compan
 | Phase | Description | Key New Components |
 |---|---|---|
 | 8 polish | Companion polish | click-through body |
-| Live2D upgrade | Animated avatar | Live2D adapter, expression events, mouse tracking |
+| Live2D polish | Animated avatar | expression/motion tuning, visual QA, mouse tracking polish |
 | 7 | Plugin Boundary | Plugin manifest, permission model, event contract |
 
 Do not do yet:
 - Do not implement Plugin Boundary before the companion event shape settles.
-- Do not add Live2D/VRM assets until the second-window lifecycle works.
+- Do not add VRM assets until the Live2D behavior is stable.
 - Do not let the main chat window use automatic proactive triggers.
 - Do not call `request_initiative_message` with `trigger = "timer"` or `window_timer` for automatic speech; backend will block it via `non_companion_trigger`.
 
@@ -429,7 +430,7 @@ Stable companion contracts:
 - Companion position and size are restored from `[companion.window]` and persisted through `update_settings`.
 
 Recommended next task:
-- Integrate Live2D Cubism SDK for Web against the existing `AvatarAdapter.onEvent(...)` contract. Do not add Plugin Boundary work until the Live2D adapter behavior is stable.
+- Polish Live2D expression/motion mapping and visual QA against the existing `AvatarAdapter.onEvent(...)` contract. Do not add Plugin Boundary work until the Live2D adapter behavior is stable.
 
 Validation commands:
 ```bash

@@ -3,7 +3,17 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
 import { currentMonitor, getCurrentWindow, Window } from "@tauri-apps/api/window";
+import * as PIXI from "pixi.js";
+import type { Live2DModel as Live2DModelInstance } from "pixi-live2d-display/cubism4";
 import "./style.css";
+
+declare global {
+  interface Window {
+    PIXI: typeof PIXI;
+  }
+}
+
+window.PIXI = PIXI;
 
 interface ModelInfo {
   manufacturer: string;
@@ -209,7 +219,7 @@ interface AvatarAdapter {
   onEvent?(type: CompanionAvatarEventType, data?: CompanionAvatarEventPayload): void;
 }
 
-function createAvatarAdapter(_modelType: string, imagePath: string): AvatarAdapter {
+function createPlaceholderAvatarAdapter(imagePath: string): AvatarAdapter {
   let container: HTMLElement | null = null;
   let image: HTMLImageElement | null = null;
   const setState = (state: string) => {
@@ -252,6 +262,226 @@ function createAvatarAdapter(_modelType: string, imagePath: string): AvatarAdapt
       setState(type === "speak_start" ? "speaking" : type === "speak_stop" ? "idle" : type);
     },
   };
+}
+
+const LIVE2D_EXPRESSION_MAP: Record<string, string> = {
+  angry: "Angry",
+  blushing: "Blushing",
+  confused: "Surprised",
+  error: "Surprised",
+  excited: "Surprised",
+  happy: "Blushing",
+  idle: "Normal",
+  normal: "Normal",
+  sad: "Sad",
+  speaking: "Normal",
+  surprised: "Surprised",
+  thinking: "f01",
+};
+
+const LIVE2D_MOTION_MAP: Record<string, string> = {
+  idle: "Idle",
+  speaking: "Tap",
+  thinking: "Flick",
+  tap: "Tap",
+};
+
+let cubismCoreScript: Promise<void> | null = null;
+let live2dRuntime: Promise<typeof import("pixi-live2d-display/cubism4")> | null = null;
+let loadedLive2dRuntime: typeof import("pixi-live2d-display/cubism4") | null = null;
+
+function ensureCubismCore(): Promise<void> {
+  const globalWindow = globalThis as typeof globalThis & { Live2DCubismCore?: unknown };
+  if (globalWindow.Live2DCubismCore) {
+    return Promise.resolve();
+  }
+  if (cubismCoreScript) {
+    return cubismCoreScript;
+  }
+  cubismCoreScript = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/vendor/live2dcubismcore.min.js";
+    script.async = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("failed to load Live2D Cubism Core"));
+    document.head.append(script);
+  });
+  return cubismCoreScript;
+}
+
+async function ensureLive2DRuntime(): Promise<typeof import("pixi-live2d-display/cubism4")> {
+  await ensureCubismCore();
+  if (loadedLive2dRuntime) {
+    return loadedLive2dRuntime;
+  }
+  if (!live2dRuntime) {
+    live2dRuntime = import("pixi-live2d-display/cubism4").then((runtime) => {
+      loadedLive2dRuntime = runtime;
+      return runtime;
+    });
+  }
+  return live2dRuntime;
+}
+
+function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
+  let container: HTMLElement | null = null;
+  let app: PIXI.Application | null = null;
+  let model: Live2DModelInstance | null = null;
+  let resizeObserver: ResizeObserver | null = null;
+  let destroyed = false;
+  const pendingEvents: CompanionAvatarEvent[] = [];
+
+  const fitModel = () => {
+    if (!container || !model || !app) return;
+    const width = Math.max(1, container.clientWidth);
+    const height = Math.max(1, container.clientHeight);
+    app.renderer.resize(width, height);
+    const bounds = model.getLocalBounds();
+    const modelWidth = Math.max(1, bounds.width);
+    const modelHeight = Math.max(1, bounds.height);
+    const scale = Math.min(width / modelWidth, height / modelHeight) * 0.94;
+    model.scale.set(scale);
+    model.x = width / 2;
+    model.y = height * 0.53;
+  };
+
+  const applyEvent = (type: CompanionAvatarEventType, data?: CompanionAvatarEventPayload) => {
+    if (!model || !container) return;
+    if (type === "look_at") {
+      const x = Math.max(-1, Math.min(1, data?.x ?? 0));
+      const y = Math.max(-1, Math.min(1, data?.y ?? 0));
+      const rect = container.getBoundingClientRect();
+      model.focus(rect.width * (0.5 + x * 0.35), rect.height * (0.45 + y * 0.25));
+      return;
+    }
+
+    if (type === "expression") {
+      const expression = LIVE2D_EXPRESSION_MAP[(data?.name || "normal").toLowerCase()] ?? data?.name;
+      if (expression) {
+        model.expression(expression).catch(() => {});
+      }
+      return;
+    }
+
+    if (type === "motion") {
+      const motion = LIVE2D_MOTION_MAP[(data?.name || "idle").toLowerCase()] ?? data?.name;
+      if (motion && loadedLive2dRuntime) {
+        model.motion(motion, undefined, loadedLive2dRuntime.MotionPriority.NORMAL).catch(() => {});
+      }
+      return;
+    }
+
+    if (type === "speak_start") {
+      model.expression(LIVE2D_EXPRESSION_MAP.speaking).catch(() => {});
+      if (loadedLive2dRuntime) {
+        model.motion(LIVE2D_MOTION_MAP.speaking, undefined, loadedLive2dRuntime.MotionPriority.NORMAL).catch(() => {});
+      }
+      return;
+    }
+
+    if (type === "speak_stop" || type === "idle") {
+      model.expression(LIVE2D_EXPRESSION_MAP.normal).catch(() => {});
+      if (loadedLive2dRuntime) {
+        model.motion(LIVE2D_MOTION_MAP.idle, undefined, loadedLive2dRuntime.MotionPriority.IDLE).catch(() => {});
+      }
+    }
+  };
+
+  const load = async (mountPoint: HTMLElement) => {
+    try {
+      const { Live2DModel, MotionPreloadStrategy, MotionPriority } = await ensureLive2DRuntime();
+      const pixiOptions: PIXI.IApplicationOptions & {
+        premultipliedAlpha: boolean;
+        useContextAlpha: "notMultiplied";
+      } = {
+        antialias: true,
+        autoDensity: true,
+        backgroundAlpha: 0,
+        clearBeforeRender: true,
+        height: Math.max(1, mountPoint.clientHeight),
+        premultipliedAlpha: false,
+        preserveDrawingBuffer: false,
+        resolution: window.devicePixelRatio || 1,
+        useContextAlpha: "notMultiplied",
+        width: Math.max(1, mountPoint.clientWidth),
+      };
+      app = new PIXI.Application(pixiOptions);
+      app.ticker.add(() => {
+        if (!app) return;
+        const gl = (app.renderer as unknown as { gl?: WebGLRenderingContext }).gl;
+        if (!gl) return;
+        gl.clearColor(0, 0, 0, 0);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }, undefined, PIXI.UPDATE_PRIORITY.HIGH);
+      app.view.classList.add("live2d-canvas");
+      mountPoint.append(app.view);
+
+      model = await Live2DModel.from(`/${modelPath}`, {
+        autoInteract: false,
+        motionPreload: MotionPreloadStrategy.IDLE,
+      });
+      if (destroyed || !app) {
+        model.destroy();
+        model = null;
+        return;
+      }
+
+      model.anchor.set(0.5, 0.5);
+      app.stage.addChild(model);
+      fitModel();
+      model.motion(LIVE2D_MOTION_MAP.idle, undefined, MotionPriority.IDLE).catch(() => {});
+      while (pendingEvents.length > 0) {
+        const event = pendingEvents.shift();
+        if (event) applyEvent(event.type, event.data);
+      }
+    } catch (error) {
+      console.error("failed to load Live2D avatar", error);
+      if (mountPoint.isConnected && !mountPoint.querySelector("img")) {
+        createPlaceholderAvatarAdapter("companion-cat-placeholder.png").mount(mountPoint);
+      }
+    }
+  };
+
+  return {
+    type: "live2d",
+    mount(mountPoint: HTMLElement) {
+      container = mountPoint;
+      destroyed = false;
+      container.dataset.avatarAdapter = "live2d";
+      resizeObserver = new ResizeObserver(fitModel);
+      resizeObserver.observe(mountPoint);
+      void load(mountPoint);
+    },
+    unmount() {
+      destroyed = true;
+      resizeObserver?.disconnect();
+      resizeObserver = null;
+      pendingEvents.length = 0;
+      model?.destroy();
+      app?.destroy(true, { children: true, texture: true, baseTexture: true });
+      if (container) {
+        delete container.dataset.avatarAdapter;
+        container.replaceChildren();
+      }
+      model = null;
+      app = null;
+      container = null;
+    },
+    onEvent(type: CompanionAvatarEventType, data?: CompanionAvatarEventPayload) {
+      if (!model) {
+        pendingEvents.push({ type, data });
+        return;
+      }
+      applyEvent(type, data);
+    },
+  };
+}
+
+function createAvatarAdapter(modelType: string, imagePath: string): AvatarAdapter {
+  if (modelType === "live2d" && imagePath.endsWith(".model3.json")) {
+    return createLive2DAvatarAdapter(imagePath);
+  }
+  return createPlaceholderAvatarAdapter(imagePath || "companion-cat-placeholder.png");
 }
 
 function option(value: string, label: string, selectedValue: string): HTMLOptionElement {

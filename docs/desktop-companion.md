@@ -1,7 +1,7 @@
 # Desktop Companion — Technical Design
 
 **Date:** 2026-06-15
-**Status:** Phase 8 companion MVP is implemented; the Live2D expression event skeleton is in place
+**Status:** Phase 8 companion MVP is implemented; the Live2D adapter MVP is in place
 
 ---
 
@@ -28,7 +28,7 @@ Desktop companion window:
   - all proactive speech is still gated by InitiativeRuntime
 ```
 
-The companion window lifecycle has shipped with the existing placeholder avatar. The avatar event skeleton now routes expression, motion, speaking, look-at, and idle events through `AvatarAdapter.onEvent(...)`. Live2D and VRM remain rendering upgrades.
+The companion window lifecycle has shipped with the existing placeholder avatar and a Live2D canvas adapter. Avatar events route expression, motion, speaking, look-at, and idle events through `AvatarAdapter.onEvent(...)`. VRM remains a later rendering upgrade.
 
 ---
 
@@ -363,7 +363,7 @@ Validation:
 
 ### 6.2 Phase 1: Live2D Companion
 
-Completed first sub-step: the event skeleton is available without adding Live2D assets yet.
+Completed MVP: the event skeleton is available and a Live2D canvas adapter can load user-provided runtime resources from `frontend/public/live2d/`.
 
 Implemented:
 
@@ -375,24 +375,27 @@ Implemented:
    - `look_at`
    - `idle`
 2. Added a placeholder adapter `onEvent(...)` implementation that maps events to simple CSS state changes.
-3. Emits frontend events from existing lifecycle points:
+3. Added a Live2D adapter that:
+   - initializes PixiJS + Cubism 4 in the frontend
+   - loads user-provided `.model3.json` assets from `frontend/public/live2d/`
+   - maps expressions and motions to Cubism expression names and motion groups
+   - maps `look_at` to Live2D focus coordinates
+   - disposes WebGL resources on `unmount()`
+4. Emits frontend events from existing lifecycle points:
    - proactive request start -> `expression: thinking`
    - proactive/dialogue message arrival -> `speak_start`
    - speech timeout, hide, or blocked timer -> `idle`
    - companion pointer movement -> `look_at`
-4. Documented the event payloads in `docs/ui-interface-contract.md`.
+5. Documented the event payloads in `docs/ui-interface-contract.md`.
 
-Only after this event contract remains stable should Live2D Cubism SDK for Web be integrated.
+Only after the Live2D adapter behavior remains stable should Plugin Boundary work resume.
 
-Runtime integration after the skeleton:
+Runtime polish after the MVP:
 
-1. Integrate Live2D Cubism SDK for Web.
-2. Implement `AvatarAdapter` with Live2D:
-   - `mount(container)`: initialize Cubism framework, load model
-   - `unmount()`: dispose framework
-   - `onEvent(type, data)`: trigger motions/expressions
-3. Add mouse tracking (character eyes follow cursor)
-4. Map backend/persona/UI events to expressions and motions.
+1. Tune model-specific expression and motion mappings.
+2. Add visual QA for companion window resize and transparent rendering.
+3. Polish mouse tracking behavior.
+4. Map additional backend/persona/UI events to expressions and motions.
 
 ### 6.3 Phase 2: Unity + VRM (estimated 1-2 weeks, optional)
 

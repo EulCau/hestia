@@ -35,6 +35,10 @@ config/*local*
 
 # Models / large artifacts
 models/*
+third_party/
+frontend/public/live2d/
+*.can3
+*.cmo3
 *.safetensors
 *.ckpt
 *.gguf

@@ -1,7 +1,7 @@
 # Hestia Implementation Summary
 
-**Date:** 2026-06-15
-**Current Phase:** 8 hardened MVP + lifecycle polish (Desktop Companion Window)
+**Date:** 2026-06-16
+**Current Phase:** 8 Live2D companion adapter MVP
 
 ---
 
@@ -110,7 +110,7 @@ interface AvatarAdapter {
 function createAvatarAdapter(modelType: string, imagePath: string): AvatarAdapter
 ```
 
-**How to use later:** When integrating Live2D or a digital human model, add a new case in `createAvatarAdapter()` that instantiates the appropriate renderer. The `mount` function receives the sidebar `<div class="avatar-container">`.
+**Current use:** `createAvatarAdapter()` supports the placeholder image adapter and the Live2D canvas adapter. The Live2D adapter loads user-provided Cubism 3/4 `.model3.json` resources from `frontend/public/live2d/` and consumes the existing companion avatar event contract.
 
 ### 3.2 Worker Trait
 
@@ -242,14 +242,14 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 ./frontend/node_modules/.bin/tauri dev
 | 8 | Desktop companion window | Done (hardened MVP + lifecycle polish) |
 | 7 | Plugin boundary + packaging | Pending |
 
-Recommended next step: integrate the Live2D runtime against the existing avatar event skeleton before Plugin Boundary. Phase 8 now has the second-window lifecycle, placeholder avatar adapter, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, persisted companion position/size, synchronized dialogue visibility lifecycle, and companion avatar events.
+Phase 8 now has the second-window lifecycle, placeholder avatar adapter, Live2D adapter MVP, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, persisted companion position/size, synchronized dialogue visibility lifecycle, and companion avatar events.
 
-Live2D/VRM remain rendering upgrades after the companion window contract is stable.
+Recommended next step: polish the Live2D behavior mapping and visual QA before Plugin Boundary. VRM remains a later rendering upgrade.
 
 Resume note for a new conversation:
 - Start from [docs/HANDOFF.md](/home/eulcau/CXTX/hestia/docs/HANDOFF.md), §10 and §11.
 - Treat [docs/ui-interface-contract.md](/home/eulcau/CXTX/hestia/docs/ui-interface-contract.md), §3.4, as the authoritative companion window/dialogue state contract.
-- The next implementation should add Live2D Cubism rendering against the existing `AvatarAdapter.onEvent(...)` contract. Do not add Plugin Boundary work until the Live2D adapter behavior is stable.
+- The next implementation should polish Live2D expression/motion mapping and visual QA against the existing `AvatarAdapter.onEvent(...)` contract. Do not add Plugin Boundary work until the Live2D adapter behavior is stable.
 - Validate with `cargo fmt --manifest-path src-tauri/Cargo.toml`, `cargo test --manifest-path src-tauri/Cargo.toml`, `npm run build`, and `./frontend/node_modules/.bin/tauri build --debug --no-bundle`.
 
 ## 6.1 Phase 6: Initiative System (2026-06-13)

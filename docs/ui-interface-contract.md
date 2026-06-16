@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-15 (Phase 8 companion avatar event skeleton)
+**Last updated:** 2026-06-16 (Phase 8 Live2D avatar adapter MVP)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -476,7 +476,61 @@ Current event sources:
 - Companion pointer movement emits `look_at` with normalized coordinates.
 - Companion hide, dialogue hide, blocked initiative, or model error emits `idle` or an error expression.
 
-The placeholder adapter maps these events to CSS state changes only. Future Live2D, Spine, or VRM adapters should consume the same event contract and must not call backend models directly.
+The placeholder adapter maps these events to CSS state changes. The Live2D adapter consumes the same contract through Cubism expressions, motion groups, and focus coordinates. Avatar adapters must not call backend models directly.
+
+Live2D control interface:
+
+The public control surface is the frontend event `companion-avatar-event`. Any frontend window may emit this event to the `companion` window:
+
+```typescript
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
+getCurrentWindow().emitTo("companion", "companion-avatar-event", {
+  type: "motion",
+  data: { name: "Tap" },
+});
+```
+
+Supported event forms:
+
+```typescript
+// Set expression. The adapter accepts mapped names and raw Cubism expression names.
+{ type: "expression", data: { name: "thinking" } }
+{ type: "expression", data: { name: "Surprised" } }
+
+// Play a motion group. The adapter accepts mapped names and raw Cubism motion groups.
+{ type: "motion", data: { name: "tap" } }
+{ type: "motion", data: { name: "FlickDown" } }
+
+// Start/stop speaking animation.
+{ type: "speak_start", data: { duration_ms: 3000 } }
+{ type: "speak_stop" }
+
+// Move gaze/head focus. Coordinates are normalized to [-1, 1].
+{ type: "look_at", data: { x: 0.4, y: -0.2 } }
+
+// Return to idle.
+{ type: "idle" }
+```
+
+Current Live2D mappings in `frontend/src/main.ts`:
+
+| Semantic name | Live2D expression |
+|---|---|
+| `thinking` | `f01` |
+| `normal`, `idle`, `speaking` | `Normal` |
+| `happy`, `blushing` | `Blushing` |
+| `sad` | `Sad` |
+| `angry` | `Angry` |
+| `surprised`, `confused`, `error`, `excited` | `Surprised` |
+
+| Semantic name | Live2D motion group |
+|---|---|
+| `idle` | `Idle` |
+| `speaking`, `tap` | `Tap` |
+| `thinking` | `Flick` |
+
+Raw model motion group names may also be used directly. Available group names depend on the user-provided `.model3.json`.
 
 Companion dialogue bubble placement:
 - Default placement is above the avatar.
@@ -516,7 +570,7 @@ interface ConfigSnapshot {
     theme: { mode: "system" | "dark" | "light" };
     avatar: {
       enabled: boolean;
-      image_path: string;    // relative to frontend public/, e.g. "companion-cat-placeholder.png"
+      image_path: string;    // relative to frontend public/, e.g. a placeholder image or user-provided .model3.json
       model_type: "placeholder" | "live2d" | "digital_human";
     };
   };
@@ -659,7 +713,7 @@ Key tokens:
 
 ## 6. Avatar Adapter Interface
 
-The avatar slot in the sidebar is designed for future replacement. The current placeholder is a static `<img>`, but the interface is defined:
+The avatar slot supports both the placeholder `<img>` adapter and the Live2D canvas adapter. The interface is:
 
 ```typescript
 interface AvatarAdapter {
@@ -670,11 +724,11 @@ interface AvatarAdapter {
 }
 ```
 
-- `mount(container)` — receives the `<div id="avatar-container">` element. The adapter is responsible for creating and appending its own DOM subtree (canvas, video, img, etc.).
+- `mount(container)` — receives the avatar mount element. The adapter is responsible for creating and appending its own DOM subtree (canvas, video, img, etc.).
 - `unmount()` — cleans up event listeners, animation loops, WebGL contexts.
-- `onEvent` — optional hook for future bidirectional communication (e.g. click-to-speak, expression changes).
+- `onEvent` — maps companion avatar events to renderer behavior. The Live2D adapter maps expression, motion, speaking, idle, and look-at events to Cubism expressions, motion groups, and focus coordinates.
 
-When adding a new model type (e.g. Live2D):
+When adding a new model type:
 1. Add a case in `createAvatarAdapter()`
 2. Update `ConfigSnapshot.app.avatar.model_type` union type
 3. Ensure the adapter's lifecycle (mount/unmount) is clean on theme changes or settings reloads

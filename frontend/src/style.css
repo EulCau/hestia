@@ -85,6 +85,25 @@ body.companion-body {
   -webkit-user-select: none;
 }
 
+body.companion-body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgba(0, 0, 0, 0.001);
+  animation: companion-repaint-plane 1000ms steps(2, end) infinite;
+}
+
+@keyframes companion-repaint-plane {
+  from {
+    opacity: 0.98;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
 button,
 input,
 select,
@@ -130,6 +149,18 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.avatar-container[data-avatar-adapter="live2d"],
+.companion-avatar[data-avatar-adapter="live2d"] {
+  overflow: hidden;
+}
+
+.live2d-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 .companion-name {
