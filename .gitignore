@@ -36,6 +36,7 @@ config/*local*
 # Models / large artifacts
 models/*
 third_party/
+frontend/public/avatar/
 frontend/public/live2d/
 *.can3
 *.cmo3

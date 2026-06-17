@@ -9,7 +9,7 @@ mod runtime;
 mod scheduler;
 mod workers;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use serde::Deserialize;
@@ -436,6 +436,133 @@ fn read_image_artifact(state: tauri::State<'_, AppState>, path: String) -> Resul
         _ => "image/png",
     };
     Ok(format!("data:{};base64,{}", mime, encode_base64(&bytes)))
+}
+
+fn copy_dir_recursive(source: &Path, target: &Path) -> Result<(), String> {
+    std::fs::create_dir_all(target)
+        .map_err(|e| format!("failed to create {}: {}", target.display(), e))?;
+    for entry in std::fs::read_dir(source)
+        .map_err(|e| format!("failed to read {}: {}", source.display(), e))?
+    {
+        let entry = entry.map_err(|e| format!("failed to read directory entry: {}", e))?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        if source_path.is_dir() {
+            copy_dir_recursive(&source_path, &target_path)?;
+        } else if source_path.is_file() {
+            std::fs::copy(&source_path, &target_path).map_err(|e| {
+                format!(
+                    "failed to copy {} to {}: {}",
+                    source_path.display(),
+                    target_path.display(),
+                    e
+                )
+            })?;
+        }
+    }
+    Ok(())
+}
+
+fn find_model3_json(path: &Path) -> Result<PathBuf, String> {
+    if path.is_file()
+        && path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".model3.json"))
+    {
+        return Ok(path.to_path_buf());
+    }
+    if !path.is_dir() {
+        return Err("Live2D path must be a .model3.json file or a directory".into());
+    }
+    let mut stack = vec![path.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for entry in std::fs::read_dir(&dir)
+            .map_err(|e| format!("failed to read {}: {}", dir.display(), e))?
+        {
+            let entry = entry.map_err(|e| format!("failed to read directory entry: {}", e))?;
+            let entry_path = entry.path();
+            if entry_path.is_dir() {
+                stack.push(entry_path);
+                continue;
+            }
+            if entry_path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".model3.json"))
+            {
+                return Ok(entry_path);
+            }
+        }
+    }
+    Err("no .model3.json file found in selected directory".into())
+}
+
+#[tauri::command]
+fn prepare_avatar_content(path: String, model_type: String) -> Result<String, String> {
+    let source = resolve_project_path(path.trim());
+    if model_type == "live2d" {
+        let model_path = find_model3_json(&source)?;
+        let root = if source.is_dir() {
+            source
+        } else {
+            model_path
+                .parent()
+                .ok_or_else(|| "Live2D model has no parent directory".to_string())?
+                .to_path_buf()
+        };
+        let public_live2d = resolve_project_path("frontend/public/live2d");
+        let target = public_live2d.join("current");
+        if !root.starts_with(&target) {
+            if target.exists() {
+                std::fs::remove_dir_all(&target)
+                    .map_err(|e| format!("failed to clear {}: {}", target.display(), e))?;
+            }
+            copy_dir_recursive(&root, &target)?;
+        }
+        let model_relative_to_root = model_path
+            .strip_prefix(&root)
+            .map_err(|_| "failed to resolve Live2D model path".to_string())?;
+        return Ok(format!(
+            "live2d/current/{}",
+            model_relative_to_root.to_string_lossy().replace('\\', "/")
+        ));
+    }
+
+    if model_type == "placeholder" {
+        if !source.is_file() {
+            return Err("image avatar path must be a file".into());
+        }
+        let extension = source
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+        let allowed = ["png", "jpg", "jpeg", "webp", "gif"];
+        if !allowed.contains(&extension.as_str()) {
+            return Err("image avatar must be png, jpg, jpeg, webp, or gif".into());
+        }
+        let public_avatar = resolve_project_path("frontend/public/avatar");
+        std::fs::create_dir_all(&public_avatar).map_err(|e| {
+            format!(
+                "failed to create avatar directory {}: {}",
+                public_avatar.display(),
+                e
+            )
+        })?;
+        let target = public_avatar.join(format!("current.{extension}"));
+        std::fs::copy(&source, &target).map_err(|e| {
+            format!(
+                "failed to copy {} to {}: {}",
+                source.display(),
+                target.display(),
+                e
+            )
+        })?;
+        return Ok(format!("avatar/current.{extension}"));
+    }
+
+    Ok(path)
 }
 
 #[tauri::command]
@@ -1296,6 +1423,7 @@ pub fn run() {
             set_companion_always_on_top,
             restart_backend,
             read_image_artifact,
+            prepare_avatar_content,
             recognize_image,
             record_user_activity,
             evaluate_initiative,

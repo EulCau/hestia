@@ -73,6 +73,20 @@ Returns:  string — data URL for frontend preview
 Errors:   string if the path is outside configured output_dir or unreadable
 Usage:    Used by the Image Test UI to preview generated artifacts without exposing arbitrary filesystem reads.
 ```
+
+#### `prepare_avatar_content`
+```
+Arguments: { path: string, modelType: "placeholder" | "live2d" | "digital_human" | string }
+Returns:  string — avatar image_path value to store in config
+Errors:   string if the selected content cannot be prepared
+Usage:
+  - placeholder: copies the selected image file into ignored local cache
+    `frontend/public/avatar/current.<ext>` and returns `avatar/current.<ext>`
+  - live2d: accepts a directory or `.model3.json`, finds the `.model3.json`, copies
+    the runtime directory into ignored local cache `frontend/public/live2d/current/`,
+    and returns a public-relative `.model3.json` path
+  - digital_human: currently returns the selected path unchanged for future renderer use
+```
 Arguments: none
 Returns:  string (JSON)
   {
@@ -732,8 +746,8 @@ interface AvatarAdapter {
 - `onEvent` — maps companion avatar events to renderer behavior. The Live2D adapter maps expression, motion, speaking, idle, and look-at events to Cubism expressions, motion groups, and focus coordinates.
 
 Avatar settings UI:
-- `placeholder` stores an image path. The path may be public-relative or a local file selected through the Tauri dialog.
-- `live2d` stores a `.model3.json` path. Related textures, motions, expressions, and physics files must remain beside that file according to the Live2D model JSON references.
+- `placeholder` stores an image path. The file picker copies selected images into ignored local cache `frontend/public/avatar/`.
+- `live2d` stores a `.model3.json` path. The file picker selects a directory, finds the model JSON, and copies runtime files into ignored local cache `frontend/public/live2d/current/`.
 - `digital_human` stores a future 3D model path such as `.vrm`, `.glb`, or `.gltf`. The current frontend records this setting but falls back to the placeholder adapter until a 3D renderer or sidecar is implemented.
 
 Future 3D implementation should keep the same adapter boundary:

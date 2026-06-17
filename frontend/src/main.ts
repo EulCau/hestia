@@ -854,21 +854,37 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
 
   const browseAvatar = el("button", { class: "btn btn-secondary", type: "button" }, "Browse") as HTMLButtonElement;
   browseAvatar.addEventListener("click", async () => {
-    const filters =
+    const selected =
       avatarType.value === "live2d"
-        ? [{ name: "Live2D Model", extensions: ["json"] }]
-        : avatarType.value === "digital_human"
-          ? [{ name: "3D Model", extensions: ["vrm", "glb", "gltf"] }]
-          : [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }];
-    const selected = await open({ multiple: false, filters });
+        ? await open({ multiple: false, directory: true })
+        : await open({
+            multiple: false,
+            filters:
+              avatarType.value === "digital_human"
+                ? [{ name: "3D Model", extensions: ["vrm", "glb", "gltf"] }]
+                : [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+          });
     if (selected && typeof selected === "string") {
-      avatarPath.value = selected;
+      try {
+        avatarPath.value = await invoke<string>("prepare_avatar_content", {
+          path: selected,
+          modelType: avatarType.value,
+        });
+        avatarHint.textContent =
+          avatarType.value === "live2d"
+            ? "Live2D content prepared under frontend/public/live2d/current."
+            : avatarType.value === "placeholder"
+              ? "Image prepared under frontend/public/avatar."
+              : "3D model path stored for a future renderer.";
+      } catch (error) {
+        avatarHint.textContent = `Avatar selection failed: ${String(error)}`;
+      }
     }
   });
   avatarType.addEventListener("change", () => {
     if (avatarType.value === "live2d") {
-      avatarPath.placeholder = "Path to model3.json";
-      avatarHint.textContent = "Select a local .model3.json file or use a public-relative path. Related textures/motions must remain beside it.";
+      avatarPath.placeholder = "Select a Live2D runtime directory";
+      avatarHint.textContent = "Choose a directory containing a .model3.json file. The runtime files are copied to an ignored local public cache.";
     } else if (avatarType.value === "digital_human") {
       avatarPath.placeholder = "Path to .vrm, .glb, or .gltf";
       avatarHint.textContent = "3D model selection is stored now; rendering requires a future VRM/GLB sidecar adapter.";
