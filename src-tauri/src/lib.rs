@@ -151,7 +151,11 @@ fn local_llm_endpoint(base_url: &str) -> (String, u16) {
 
 #[tauri::command]
 fn get_config_snapshot(state: tauri::State<'_, AppState>) -> String {
-    let mut snapshot = config::config_snapshot(&state.config);
+    let cfg = config::load_config().unwrap_or_else(|e| {
+        warn!(error = %e, "failed to reload config snapshot, using startup config");
+        state.config.clone()
+    });
+    let mut snapshot = config::config_snapshot(&cfg);
     if let Some(local_llm) = snapshot.get_mut("local_llm") {
         local_llm["available"] = serde_json::Value::Bool(state.local_llm_available);
         local_llm["managed_process"] = serde_json::Value::Bool(

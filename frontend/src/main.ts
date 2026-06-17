@@ -1000,6 +1000,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
 
     try {
       await invoke("update_settings", { updates });
+      Object.assign(cfg, await loadConfig());
       if (updates.theme_mode) {
         applyTheme(String(updates.theme_mode));
       }

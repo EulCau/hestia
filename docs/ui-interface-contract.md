@@ -49,7 +49,9 @@ Arguments: none
 Returns:  string (JSON) — ConfigSnapshot (see §4)
 Errors:   never
 Usage:    Called on app start to populate UI state.
-          Called again after closing Settings to refresh.
+          Called again after closing Settings to refresh. The backend reloads
+          the current merged config for each call, then injects runtime-only
+          availability fields.
 ```
 
 #### `list_personas`
