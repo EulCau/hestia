@@ -77,6 +77,7 @@ interface ConfigSnapshot {
   };
 }
 
+type AvatarConfig = ConfigSnapshot["app"]["avatar"];
 type HistoryEntry = { role: string; content: string };
 
 const chatHistory: HistoryEntry[] = [];
@@ -1002,7 +1003,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
       if (updates.theme_mode) {
         applyTheme(String(updates.theme_mode));
       }
-      setStatus(status, true, "Saved. Restart backend-affecting settings to apply.");
+      setStatus(status, true, "Saved. Avatar and theme changes apply immediately.");
     } catch (error) {
       setStatus(status, false, String(error));
     }
@@ -1167,8 +1168,8 @@ async function loadConfig(): Promise<ConfigSnapshot> {
   }
 }
 
-function companionImagePath(cfg: ConfigSnapshot): string {
-  return cfg.app.avatar.image_path || "companion-cat-placeholder.png";
+function avatarImagePath(avatar: AvatarConfig): string {
+  return avatar.image_path || "companion-cat-placeholder.png";
 }
 
 function reportUserActivity() {
@@ -1190,9 +1191,20 @@ async function buildApp() {
   const layout = el("div", { class: "app-layout" });
   const sidebar = el("aside", { class: "sidebar" });
   const avatar = el("div", { class: "avatar-container", id: "avatar-container" });
-  if (cfg.app.avatar.enabled) {
-    createAvatarAdapter(cfg.app.avatar.model_type, companionImagePath(cfg)).mount(avatar);
-  }
+  let sidebarAvatarAdapter: AvatarAdapter | null = null;
+  const mountSidebarAvatar = (avatarConfig: AvatarConfig) => {
+    sidebarAvatarAdapter?.unmount();
+    sidebarAvatarAdapter = null;
+    avatar.replaceChildren();
+    if (!avatarConfig.enabled) return;
+    sidebarAvatarAdapter = createAvatarAdapter(avatarConfig.model_type, avatarImagePath(avatarConfig));
+    sidebarAvatarAdapter.mount(avatar);
+  };
+  mountSidebarAvatar(cfg.app.avatar);
+  listen<AvatarConfig>("avatar-config-changed", (event) => {
+    cfg.app.avatar = event.payload;
+    mountSidebarAvatar(event.payload);
+  }).catch(() => {});
 
   const themeSelect = el("select", { id: "theme-select", "aria-label": "Theme" }) as HTMLSelectElement;
   ["system", "dark", "light"].forEach((value) => {
@@ -1366,8 +1378,16 @@ async function buildCompanionView() {
     "data-tauri-drag-region": "",
   });
   const resizeHandle = el("button", { class: "companion-resize", type: "button", title: "Resize", "aria-label": "Resize companion" });
-  const avatarAdapter = createAvatarAdapter(cfg.app.avatar.model_type, companionImagePath(cfg));
-  avatarAdapter.mount(avatar);
+  let avatarAdapter: AvatarAdapter | null = null;
+  const mountCompanionAvatar = (avatarConfig: AvatarConfig) => {
+    avatarAdapter?.unmount();
+    avatarAdapter = null;
+    avatar.replaceChildren();
+    if (!avatarConfig.enabled) return;
+    avatarAdapter = createAvatarAdapter(avatarConfig.model_type, avatarImagePath(avatarConfig));
+    avatarAdapter.mount(avatar);
+  };
+  mountCompanionAvatar(cfg.app.avatar);
   shell.append(controls, avatar, resizeHandle);
   app.append(shell);
 
@@ -1432,7 +1452,7 @@ async function buildCompanionView() {
     }
   };
   const dispatchAvatarEvent = (event: CompanionAvatarEvent) => {
-    avatarAdapter.onEvent?.(event.type, event.data);
+    avatarAdapter?.onEvent?.(event.type, event.data);
     if (event.type === "speak_start") {
       stopAvatarSpeechTimer();
       const durationMs = Math.max(600, Math.min(8000, event.data?.duration_ms ?? 1800));
@@ -1446,6 +1466,12 @@ async function buildCompanionView() {
       stopAvatarSpeechTimer();
     }
   };
+  listen<AvatarConfig>("avatar-config-changed", (event) => {
+    cfg.app.avatar = event.payload;
+    stopAvatarSpeechTimer();
+    mountCompanionAvatar(event.payload);
+    dispatchAvatarEvent({ type: "idle" });
+  }).catch(() => {});
   const speechDurationForText = (text: string) => Math.max(1200, Math.min(8000, text.length * 70));
   let controlsHideTimer: number | null = null;
   const hideControls = () => {

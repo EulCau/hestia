@@ -212,9 +212,26 @@ fn save_persona_content(profile: String, content: String) -> Result<String, Stri
 // ── Mutate commands ──
 
 #[tauri::command]
-async fn update_settings(updates: serde_json::Value) -> Result<String, String> {
+async fn update_settings(
+    app: tauri::AppHandle,
+    updates: serde_json::Value,
+) -> Result<String, String> {
     info!(?updates, "updating user config");
+    let avatar_changed = updates.get("avatar_enabled").is_some()
+        || updates.get("avatar_image_path").is_some()
+        || updates.get("avatar_model_type").is_some();
     config::update_user_config(updates).map_err(|e| format!("failed to update config: {}", e))?;
+    if avatar_changed {
+        let cfg = config::load_config().map_err(|e| format!("failed to reload config: {}", e))?;
+        let payload = serde_json::json!({
+            "enabled": cfg.app.avatar.enabled,
+            "image_path": cfg.app.avatar.image_path,
+            "model_type": cfg.app.avatar.model_type,
+        });
+        let _ = app.emit_to("main", "avatar-config-changed", payload.clone());
+        let _ = app.emit_to("companion", "avatar-config-changed", payload.clone());
+        let _ = app.emit_to("companion_dialog", "avatar-config-changed", payload);
+    }
     Ok("ok".into())
 }
 

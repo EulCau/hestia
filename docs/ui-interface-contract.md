@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-17 (Avatar settings and future 3D hook)
+**Last updated:** 2026-06-17 (Avatar hot-apply settings)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -160,6 +160,9 @@ Errors:   string with error message
 Side effect: Writes to config/user.toml. Does NOT hot-reload the backend.
              API key / base URL / model / local LLM changes require app restart.
              Theme mode changes take effect immediately (applied in frontend).
+             Avatar changes emit `avatar-config-changed` to `main`,
+             `companion`, and `companion_dialog` so visible avatar adapters can
+             unmount the old renderer and mount the new renderer immediately.
 ```
 
 #### `send_chat_message`
@@ -749,6 +752,21 @@ Avatar settings UI:
 - `placeholder` stores an image path. The file picker copies selected images into ignored local cache `frontend/public/avatar/`.
 - `live2d` stores a `.model3.json` path. The file picker selects a directory, finds the model JSON, and copies runtime files into ignored local cache `frontend/public/live2d/current/`.
 - `digital_human` stores a future 3D model path such as `.vrm`, `.glb`, or `.gltf`. The current frontend records this setting but falls back to the placeholder adapter until a 3D renderer or sidecar is implemented.
+
+Hot-apply event:
+
+```typescript
+type AvatarConfig = {
+  enabled: boolean;
+  image_path: string;
+  model_type: "placeholder" | "live2d" | "digital_human" | string;
+};
+```
+
+When `update_settings` receives any of `avatar_enabled`, `avatar_image_path`, or
+`avatar_model_type`, the backend emits `avatar-config-changed` with `AvatarConfig`
+to `main`, `companion`, and `companion_dialog`. The main and companion windows
+must call `unmount()` on the current adapter before mounting the new adapter.
 
 Future 3D implementation should keep the same adapter boundary:
 1. Add a renderer case in `createAvatarAdapter()` for `digital_human`.
