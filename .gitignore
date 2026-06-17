@@ -25,6 +25,7 @@ data/memory/*
 data/screenshots/*
 data/prompts/*
 data/artifacts/*
+usr/
 
 # Secrets
 .env

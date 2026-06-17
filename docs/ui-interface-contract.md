@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-17 (Live2D configurable reactions)
+**Last updated:** 2026-06-17 (User persona overrides)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -912,7 +912,8 @@ The frontend maintains a `chatHistory` array. Each successful exchange appends `
 #### `get_persona_content`
 ```
 Arguments: { profile: string }  — e.g. "default"
-Returns:  string — raw JSON content of personality/{profile}.json
+Returns:  string — raw JSON content of usr/personality/{profile}.json if present,
+          otherwise bundled personality/{profile}.json
 Errors:   string if file not found or unreadable
 ```
 
@@ -921,7 +922,10 @@ Errors:   string if file not found or unreadable
 Arguments: { profile: string, content: string }
 Returns:  string "ok"
 Errors:   string if JSON invalid or write fails
-Side effect: Overwrites personality/{profile}.json. Requires restart or page reload to apply to active prompt assembler.
+Side effect: Validates against PersonaConfig, then writes usr/personality/{profile}.json.
+             The bundled personality/{profile}.json remains the default template.
+             usr/ is gitignored for development and should map to the system user data
+             directory in packaged builds.
 ```
 
 ### 9.3 Persona Editor UI
@@ -929,7 +933,7 @@ Side effect: Overwrites personality/{profile}.json. Requires restart or page rel
 Sidebar button "Persona" (pencil icon) opens a modal with:
 - Textarea pre-loaded with current persona JSON
 - "Load" button — re-reads from disk
-- "Save" button — validates JSON schema, writes to disk
+- "Save" button — validates JSON schema, writes a user override
 - Changes take effect on next `send_chat_message` call (PromptAssembler loads fresh on each message)
 
 ### 9.4 Updated ConfigSnapshot

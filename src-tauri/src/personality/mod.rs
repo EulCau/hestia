@@ -25,7 +25,7 @@ pub struct PromptAssembler {
 
 impl PromptAssembler {
     pub fn load(profile_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let path = persona_path(profile_name);
+        let path = persona_read_path(profile_name);
         info!("loading persona from {}", path.display());
         let content = std::fs::read_to_string(&path)?;
         let persona: PersonaConfig = serde_json::from_str(&content)?;
@@ -71,46 +71,55 @@ impl PromptAssembler {
     }
 }
 
-fn persona_path(profile_name: &str) -> PathBuf {
-    let filename = format!("{}.json", profile_name);
-    let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    let candidates: Vec<PathBuf> = vec![
+fn project_root() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
+}
+
+fn user_persona_dir() -> PathBuf {
+    project_root().join("usr").join("personality")
+}
+
+fn bundled_persona_dir_candidates() -> Vec<PathBuf> {
+    vec![
         std::env::current_exe()
             .ok()
-            .and_then(|p| p.parent().map(|d| d.join("personality").join(&filename))),
-        Some(manifest_dir.join("..").join("personality").join(&filename)),
-        Some(PathBuf::from("personality").join(&filename)),
+            .and_then(|p| p.parent().map(|d| d.join("personality"))),
+        Some(project_root().join("personality")),
+        Some(PathBuf::from("personality")),
     ]
     .into_iter()
     .flatten()
-    .collect();
+    .collect()
+}
+
+fn persona_read_path(profile_name: &str) -> PathBuf {
+    let filename = format!("{}.json", profile_name);
+    let mut candidates = vec![user_persona_dir().join(&filename)];
+    candidates.extend(
+        bundled_persona_dir_candidates()
+            .into_iter()
+            .map(|dir| dir.join(&filename)),
+    );
     for candidate in &candidates {
         if candidate.exists() {
             return candidate.clone();
         }
     }
-    PathBuf::from("personality").join(&filename)
+    user_persona_dir().join(&filename)
+}
+
+fn persona_write_path(profile_name: &str) -> PathBuf {
+    user_persona_dir().join(format!("{}.json", profile_name))
 }
 
 pub fn list_profiles() -> Vec<String> {
-    let dirs: Vec<PathBuf> = vec![
-        std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.join("personality"))),
-        Some(
-            PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("personality"),
-        ),
-        Some(PathBuf::from("personality")),
-    ]
-    .into_iter()
-    .flatten()
-    .collect();
+    let mut dirs = vec![user_persona_dir()];
+    dirs.extend(bundled_persona_dir_candidates());
+    let mut profiles = Vec::new();
     for dir in &dirs {
         if dir.is_dir() {
             if let Ok(entries) = std::fs::read_dir(dir) {
-                return entries
+                for profile in entries
                     .filter_map(|e| e.ok())
                     .filter(|e| e.path().extension().map_or(false, |ext| ext == "json"))
                     .filter_map(|e| {
@@ -119,11 +128,15 @@ pub fn list_profiles() -> Vec<String> {
                             .and_then(|s| s.to_str())
                             .map(|s| s.to_string())
                     })
-                    .collect();
+                {
+                    if !profiles.contains(&profile) {
+                        profiles.push(profile);
+                    }
+                }
             }
         }
     }
-    vec![]
+    profiles
 }
 
 /// Builds a rewrite prompt for the local personality layer.
@@ -162,7 +175,7 @@ impl PersonaRewriter {
         let messages = vec![
             serde_json::json!({
                 "role": "system",
-                "content": "You polish text to match a desired communication style. Given a message and style rules, enhance it to fit the rules while preserving the original voice and energy. If the original has personality, keep it. If it uses sounds (like meow), actions (in parentheses), or playful tone, preserve them. Only enforce hard constraints explicitly listed in the rules (e.g. punctuation format, no exclamation marks). Do not make the text colder or more robotic. Physical actions and sounds in parentheses are encouraged. Output only the result."
+                "content": "You polish text to match a desired communication style. Given a message and style rules, enhance it to fit the rules while preserving the original voice and energy. If the original has personality, keep it. If it uses brief parenthetical states, actions, or tone markers, preserve them only when they remain generic and restrained. Only enforce hard constraints explicitly listed in the rules, such as punctuation format or no exclamation marks. Do not add fixed species, identity, age, gender, job, catchphrase, or body-feature cues. Do not make the text colder or more robotic. Output only the result."
             }),
             serde_json::json!({
                 "role": "user",
@@ -179,7 +192,7 @@ impl PersonaRewriter {
 
 /// Read the raw JSON content of a persona profile.
 pub fn read_persona_raw(profile_name: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let path = persona_path(profile_name);
+    let path = persona_read_path(profile_name);
     Ok(std::fs::read_to_string(&path)?)
 }
 
@@ -191,7 +204,7 @@ pub fn save_persona_raw(
     // Validate it's valid JSON and matches PersonaConfig schema
     let _parsed: PersonaConfig =
         serde_json::from_str(content).map_err(|e| format!("invalid persona JSON: {}", e))?;
-    let path = persona_path(profile_name);
+    let path = persona_write_path(profile_name);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }

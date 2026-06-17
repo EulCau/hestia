@@ -207,7 +207,10 @@ config/
   user.toml                User overrides (gitignored)
 
 personality/
-  default.json             Default persona
+  default.json             Bundled default persona template
+
+usr/
+  personality/             Local user persona overrides (gitignored; packaged builds should use system user data)
 
 assets/
   companion-cat-placeholder.png  Original generated cat placeholder

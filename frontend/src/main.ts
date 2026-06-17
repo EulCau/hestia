@@ -919,7 +919,7 @@ function buildPersonaEditor(cfg: ConfigSnapshot): HTMLElement {
   saveBtn.addEventListener("click", async () => {
     try {
       await invoke("save_persona_content", { profile, content: textarea.value });
-      setStatus(status, true, `Saved ${profile}.json. The next message will use it.`);
+      setStatus(status, true, `Saved user override for ${profile}.json. The next message will use it.`);
     } catch (error) {
       setStatus(status, false, String(error));
     }
