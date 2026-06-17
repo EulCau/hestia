@@ -270,7 +270,15 @@ async fn update_settings(
     info!(?updates, "updating user config");
     let avatar_changed = updates.get("avatar_enabled").is_some()
         || updates.get("avatar_image_path").is_some()
-        || updates.get("avatar_model_type").is_some();
+        || updates.get("avatar_model_type").is_some()
+        || updates.get("avatar_auto_select").is_some()
+        || updates.get("avatar_idle_expression").is_some()
+        || updates.get("avatar_thinking_expression").is_some()
+        || updates.get("avatar_speaking_expression").is_some()
+        || updates.get("avatar_error_expression").is_some()
+        || updates.get("avatar_idle_motion").is_some()
+        || updates.get("avatar_thinking_motion").is_some()
+        || updates.get("avatar_speaking_motion").is_some();
     config::update_user_config(updates).map_err(|e| format!("failed to update config: {}", e))?;
     if avatar_changed {
         let cfg = config::load_config().map_err(|e| format!("failed to reload config: {}", e))?;
@@ -278,6 +286,14 @@ async fn update_settings(
             "enabled": cfg.app.avatar.enabled,
             "image_path": cfg.app.avatar.image_path,
             "model_type": cfg.app.avatar.model_type,
+            "auto_select": cfg.app.avatar.auto_select,
+            "idle_expression": cfg.app.avatar.idle_expression,
+            "thinking_expression": cfg.app.avatar.thinking_expression,
+            "speaking_expression": cfg.app.avatar.speaking_expression,
+            "error_expression": cfg.app.avatar.error_expression,
+            "idle_motion": cfg.app.avatar.idle_motion,
+            "thinking_motion": cfg.app.avatar.thinking_motion,
+            "speaking_motion": cfg.app.avatar.speaking_motion,
         });
         let _ = app.emit_to("main", "avatar-config-changed", payload.clone());
         let _ = app.emit_to("companion", "avatar-config-changed", payload.clone());

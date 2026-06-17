@@ -9,6 +9,14 @@ mode = "system"
 enabled = true
 image_path = "companion-cat-placeholder.png"
 model_type = "placeholder"
+auto_select = true
+idle_expression = "Normal"
+thinking_expression = "f01"
+speaking_expression = "Normal"
+error_expression = "Surprised"
+idle_motion = "Idle"
+thinking_motion = "Flick"
+speaking_motion = "Tap"
 
 [companion.window]
 width = 260

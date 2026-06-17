@@ -110,7 +110,7 @@ interface AvatarAdapter {
 function createAvatarAdapter(modelType: string, imagePath: string): AvatarAdapter
 ```
 
-**Current use:** `createAvatarAdapter()` supports the placeholder image adapter and the Live2D canvas adapter. The settings UI can select image paths, Live2D `.model3.json` paths, and future 3D model paths. The Live2D adapter loads user-provided Cubism 3/4 `.model3.json` resources and consumes the existing companion avatar event contract. Manual Live2D controls use explicit events and disable automatic runtime idle requests so preset motions do not override Hestia-driven behavior. The 3D selection is stored as configuration only until a renderer or sidecar is implemented.
+**Current use:** `createAvatarAdapter()` supports the placeholder image adapter and the Live2D canvas adapter. The settings UI can select image paths, Live2D `.model3.json` paths, and future 3D model paths. The Live2D adapter loads user-provided Cubism 3/4 `.model3.json` resources and consumes the existing companion avatar event contract. Manual Live2D controls use explicit events and disable automatic runtime idle requests so preset motions do not override Hestia-driven behavior. The Live2D thinking, speaking, idle, and error mappings are configurable in `[app.avatar]`. Companion dialogue and proactive companion replies can also ask the chat model to select a manifest-validated expression/motion from the current Live2D vocabulary. The 3D selection is stored as configuration only until a renderer or sidecar is implemented.
 
 ### 3.2 Worker Trait
 
@@ -149,6 +149,14 @@ mode = "system"       # "system" | "dark" | "light"
 enabled = true
 image_path = "companion-cat-placeholder.png"
 model_type = "placeholder"  # "placeholder" | "live2d" | "digital_human"
+auto_select = true
+idle_expression = "Normal"
+thinking_expression = "f01"
+speaking_expression = "Normal"
+error_expression = "Surprised"
+idle_motion = "Idle"
+thinking_motion = "Flick"
+speaking_motion = "Tap"
 
 [remote_api]
 base_url = "https://api.deepseek.com"

@@ -55,6 +55,22 @@ pub struct AvatarSection {
     pub image_path: String,
     #[serde(default = "default_avatar_model_type")]
     pub model_type: String,
+    #[serde(default = "default_avatar_auto_select")]
+    pub auto_select: bool,
+    #[serde(default = "default_avatar_idle_expression")]
+    pub idle_expression: String,
+    #[serde(default = "default_avatar_thinking_expression")]
+    pub thinking_expression: String,
+    #[serde(default = "default_avatar_speaking_expression")]
+    pub speaking_expression: String,
+    #[serde(default = "default_avatar_error_expression")]
+    pub error_expression: String,
+    #[serde(default = "default_avatar_idle_motion")]
+    pub idle_motion: String,
+    #[serde(default = "default_avatar_thinking_motion")]
+    pub thinking_motion: String,
+    #[serde(default = "default_avatar_speaking_motion")]
+    pub speaking_motion: String,
 }
 fn default_avatar_enabled() -> bool {
     true
@@ -65,12 +81,44 @@ fn default_avatar_image_path() -> String {
 fn default_avatar_model_type() -> String {
     "placeholder".into()
 }
+fn default_avatar_auto_select() -> bool {
+    true
+}
+fn default_avatar_idle_expression() -> String {
+    "Normal".into()
+}
+fn default_avatar_thinking_expression() -> String {
+    "f01".into()
+}
+fn default_avatar_speaking_expression() -> String {
+    "Normal".into()
+}
+fn default_avatar_error_expression() -> String {
+    "Surprised".into()
+}
+fn default_avatar_idle_motion() -> String {
+    "Idle".into()
+}
+fn default_avatar_thinking_motion() -> String {
+    "Flick".into()
+}
+fn default_avatar_speaking_motion() -> String {
+    "Tap".into()
+}
 impl Default for AvatarSection {
     fn default() -> Self {
         Self {
             enabled: true,
             image_path: default_avatar_image_path(),
             model_type: default_avatar_model_type(),
+            auto_select: default_avatar_auto_select(),
+            idle_expression: default_avatar_idle_expression(),
+            thinking_expression: default_avatar_thinking_expression(),
+            speaking_expression: default_avatar_speaking_expression(),
+            error_expression: default_avatar_error_expression(),
+            idle_motion: default_avatar_idle_motion(),
+            thinking_motion: default_avatar_thinking_motion(),
+            speaking_motion: default_avatar_speaking_motion(),
         }
     }
 }
@@ -481,7 +529,19 @@ pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
 
 pub fn config_snapshot(c: &AppConfig) -> serde_json::Value {
     serde_json::json!({
-        "app": { "name": c.app.name, "environment": c.app.environment, "theme": { "mode": c.app.theme.mode }, "avatar": { "enabled": c.app.avatar.enabled, "image_path": c.app.avatar.image_path, "model_type": c.app.avatar.model_type } },
+        "app": { "name": c.app.name, "environment": c.app.environment, "theme": { "mode": c.app.theme.mode }, "avatar": {
+            "enabled": c.app.avatar.enabled,
+            "image_path": c.app.avatar.image_path,
+            "model_type": c.app.avatar.model_type,
+            "auto_select": c.app.avatar.auto_select,
+            "idle_expression": c.app.avatar.idle_expression,
+            "thinking_expression": c.app.avatar.thinking_expression,
+            "speaking_expression": c.app.avatar.speaking_expression,
+            "error_expression": c.app.avatar.error_expression,
+            "idle_motion": c.app.avatar.idle_motion,
+            "thinking_motion": c.app.avatar.thinking_motion,
+            "speaking_motion": c.app.avatar.speaking_motion,
+        } },
         "companion": { "window": { "x": c.companion.window.x, "y": c.companion.window.y, "width": c.companion.window.width, "height": c.companion.window.height } },
         "remote_api": { "base_url": c.remote_api.base_url, "model": c.remote_api.model, "has_api_key": c.remote_api.api_key.is_some() || std::env::var(&c.remote_api.api_key_env).is_ok() },
         "local_llm": { "backend": c.local_llm.backend, "base_url": c.local_llm.base_url, "model": c.local_llm.model, "enabled": c.local_llm.enabled, "available": c.local_llm.enabled, "auto_load": c.local_llm.auto_load, "models_dir": c.local_llm.models_dir, "load_command": c.local_llm.load_command, "unload_command": c.local_llm.unload_command },
@@ -568,6 +628,30 @@ pub fn update_user_config(updates: serde_json::Value) -> Result<(), Box<dyn std:
         }
         if let Some(v) = updates.get("avatar_model_type") {
             upsert("app.avatar", "model_type", v);
+        }
+        if let Some(v) = updates.get("avatar_auto_select") {
+            upsert("app.avatar", "auto_select", v);
+        }
+        if let Some(v) = updates.get("avatar_idle_expression") {
+            upsert("app.avatar", "idle_expression", v);
+        }
+        if let Some(v) = updates.get("avatar_thinking_expression") {
+            upsert("app.avatar", "thinking_expression", v);
+        }
+        if let Some(v) = updates.get("avatar_speaking_expression") {
+            upsert("app.avatar", "speaking_expression", v);
+        }
+        if let Some(v) = updates.get("avatar_error_expression") {
+            upsert("app.avatar", "error_expression", v);
+        }
+        if let Some(v) = updates.get("avatar_idle_motion") {
+            upsert("app.avatar", "idle_motion", v);
+        }
+        if let Some(v) = updates.get("avatar_thinking_motion") {
+            upsert("app.avatar", "thinking_motion", v);
+        }
+        if let Some(v) = updates.get("avatar_speaking_motion") {
+            upsert("app.avatar", "speaking_motion", v);
         }
         if let Some(v) = updates.get("api_key") {
             upsert("remote_api", "api_key", v);

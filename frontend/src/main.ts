@@ -26,7 +26,19 @@ interface ConfigSnapshot {
   app: {
     name: string;
     theme: { mode: string };
-    avatar: { enabled: boolean; image_path: string; model_type: string };
+    avatar: {
+      enabled: boolean;
+      image_path: string;
+      model_type: string;
+      auto_select: boolean;
+      idle_expression: string;
+      thinking_expression: string;
+      speaking_expression: string;
+      error_expression: string;
+      idle_motion: string;
+      thinking_motion: string;
+      speaking_motion: string;
+    };
   };
   companion: {
     window: { x: number | null; y: number | null; width: number; height: number };
@@ -141,6 +153,12 @@ interface Live2DManifestInfo {
   expressions: string[];
   motions: Live2DMotionOption[];
   hasAudio: boolean;
+}
+
+interface Live2DAutonomousSelection {
+  expression?: string;
+  motion_group?: string;
+  motion_index?: number;
 }
 
 interface Live2DMotionState {
@@ -345,6 +363,30 @@ const LIVE2D_MOTION_MAP: Record<string, string> = {
   tap: "Tap",
 };
 
+function configuredLive2DExpression(name: string | undefined, avatar: AvatarConfig): string | undefined {
+  const semantic = (name || "normal").toLowerCase();
+  const configured: Record<string, string> = {
+    normal: avatar.idle_expression,
+    idle: avatar.idle_expression,
+    speaking: avatar.speaking_expression,
+    thinking: avatar.thinking_expression,
+    error: avatar.error_expression,
+    confused: avatar.error_expression,
+  };
+  return configured[semantic] || LIVE2D_EXPRESSION_MAP[semantic] || name;
+}
+
+function configuredLive2DMotion(name: string | undefined, avatar: AvatarConfig): string | undefined {
+  const semantic = (name || "idle").toLowerCase();
+  const configured: Record<string, string> = {
+    idle: avatar.idle_motion,
+    speaking: avatar.speaking_motion,
+    tap: avatar.speaking_motion,
+    thinking: avatar.thinking_motion,
+  };
+  return configured[semantic] || LIVE2D_MOTION_MAP[semantic] || name;
+}
+
 let cubismCoreScript: Promise<void> | null = null;
 let live2dRuntime: Promise<typeof import("pixi-live2d-display/cubism4")> | null = null;
 let loadedLive2dRuntime: typeof import("pixi-live2d-display/cubism4") | null = null;
@@ -385,7 +427,8 @@ async function ensureLive2DRuntime(): Promise<typeof import("pixi-live2d-display
   return live2dRuntime;
 }
 
-function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
+function createLive2DAvatarAdapter(avatarConfig: AvatarConfig): AvatarAdapter {
+  const modelPath = avatarImagePath(avatarConfig);
   let container: HTMLElement | null = null;
   let app: PIXI.Application | null = null;
   let model: Live2DModelInstance | null = null;
@@ -423,7 +466,7 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
     }
 
     if (type === "expression") {
-      const expression = LIVE2D_EXPRESSION_MAP[(data?.name || "normal").toLowerCase()] ?? data?.name;
+      const expression = configuredLive2DExpression(data?.name, avatarConfig);
       if (expression) {
         model.expression(expression).catch(() => {});
       }
@@ -431,7 +474,7 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
     }
 
     if (type === "motion") {
-      const motion = LIVE2D_MOTION_MAP[(data?.name || "idle").toLowerCase()] ?? data?.name;
+      const motion = configuredLive2DMotion(data?.name, avatarConfig);
       if (motion && loadedLive2dRuntime) {
         const index = Number.isFinite(data?.index) ? data?.index : undefined;
         stopLive2DMotions();
@@ -442,20 +485,24 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
     }
 
     if (type === "speak_start") {
-      model.expression(LIVE2D_EXPRESSION_MAP.speaking).catch(() => {});
+      const expression = configuredLive2DExpression("speaking", avatarConfig);
+      if (expression) model.expression(expression).catch(() => {});
       if (loadedLive2dRuntime) {
         stopLive2DMotions();
-        model.motion(LIVE2D_MOTION_MAP.speaking, undefined, loadedLive2dRuntime.MotionPriority.FORCE).catch(() => {});
+        const motion = configuredLive2DMotion("speaking", avatarConfig);
+        if (motion) model.motion(motion, undefined, loadedLive2dRuntime.MotionPriority.FORCE).catch(() => {});
         loadedLive2dRuntime.SoundManager.destroy();
       }
       return;
     }
 
     if (type === "speak_stop" || type === "idle") {
-      model.expression(LIVE2D_EXPRESSION_MAP.normal).catch(() => {});
+      const expression = configuredLive2DExpression("idle", avatarConfig);
+      if (expression) model.expression(expression).catch(() => {});
       if (loadedLive2dRuntime) {
         stopLive2DMotions();
-        model.motion(LIVE2D_MOTION_MAP.idle, undefined, loadedLive2dRuntime.MotionPriority.FORCE).catch(() => {});
+        const motion = configuredLive2DMotion("idle", avatarConfig);
+        if (motion) model.motion(motion, undefined, loadedLive2dRuntime.MotionPriority.FORCE).catch(() => {});
         loadedLive2dRuntime.SoundManager.destroy();
       }
     }
@@ -508,7 +555,8 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
       model.anchor.set(0.5, 0.5);
       app.stage.addChild(model);
       fitModel();
-      model.motion(LIVE2D_MOTION_MAP.idle, undefined, MotionPriority.FORCE).catch(() => {});
+      const idleMotion = configuredLive2DMotion("idle", avatarConfig);
+      if (idleMotion) model.motion(idleMotion, undefined, MotionPriority.FORCE).catch(() => {});
       loadedLive2dRuntime?.SoundManager.destroy();
       while (pendingEvents.length > 0) {
         const event = pendingEvents.shift();
@@ -564,11 +612,12 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
   };
 }
 
-function createAvatarAdapter(modelType: string, imagePath: string): AvatarAdapter {
-  if (modelType === "live2d" && imagePath.endsWith(".model3.json")) {
-    return createLive2DAvatarAdapter(imagePath);
+function createAvatarAdapter(avatarConfig: AvatarConfig): AvatarAdapter {
+  const imagePath = avatarImagePath(avatarConfig);
+  if (avatarConfig.model_type === "live2d" && imagePath.endsWith(".model3.json")) {
+    return createLive2DAvatarAdapter(avatarConfig);
   }
-  if (modelType === "placeholder") {
+  if (avatarConfig.model_type === "placeholder") {
     return createPlaceholderAvatarAdapter(imagePath || "companion-cat-placeholder.png");
   }
   return createPlaceholderAvatarAdapter("companion-cat-placeholder.png");
@@ -607,6 +656,110 @@ async function loadLive2DManifestInfo(modelPath: string): Promise<Live2DManifest
     });
   }
   return { expressions, motions, hasAudio };
+}
+
+function extractJsonObject(text: string): unknown {
+  try {
+    return JSON.parse(text);
+  } catch {
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    try {
+      return JSON.parse(match[0]);
+    } catch {
+      return null;
+    }
+  }
+}
+
+function normalizeOptionalString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function buildLive2DSelectionPrompt(info: Live2DManifestInfo, userText: string, assistantText: string): string {
+  const expressionList = info.expressions.map((name) => `- ${name}`).join("\n") || "- none";
+  const motionList =
+    info.motions.map((motion) => `- group=${motion.group}, index=${motion.index}, label=${motion.label}`).join("\n") ||
+    "- none";
+  return [
+    "You choose a Live2D avatar reaction for a desktop companion.",
+    "First decide whether each candidate is a real emotion/action word, not just an internal id, file code, or sequence name.",
+    "Then choose at most one expression and at most one motion that fit the dialogue.",
+    "Use only exact candidate values. If no candidate is meaningful or suitable, use null.",
+    "Return strict JSON only, with this schema:",
+    "{\"expression\": string|null, \"motion_group\": string|null, \"motion_index\": number|null}",
+    "",
+    "Available expression candidates:",
+    expressionList,
+    "",
+    "Available motion candidates:",
+    motionList,
+    "",
+    "Current user message:",
+    userText,
+    "",
+    "Current assistant reply:",
+    assistantText,
+  ].join("\n");
+}
+
+function parseLive2DSelection(raw: string, info: Live2DManifestInfo): Live2DAutonomousSelection | null {
+  const parsed = extractJsonObject(raw);
+  if (!parsed || typeof parsed !== "object") return null;
+  const data = parsed as Record<string, unknown>;
+  const expression = normalizeOptionalString(data.expression);
+  const motionGroup = normalizeOptionalString(data.motion_group);
+  const motionIndex = typeof data.motion_index === "number" && Number.isInteger(data.motion_index) ? data.motion_index : undefined;
+  const selection: Live2DAutonomousSelection = {};
+
+  if (expression && info.expressions.includes(expression)) {
+    selection.expression = expression;
+  }
+  if (
+    motionGroup &&
+    typeof motionIndex === "number" &&
+    info.motions.some((motion) => motion.group === motionGroup && motion.index === motionIndex)
+  ) {
+    selection.motion_group = motionGroup;
+    selection.motion_index = motionIndex;
+  }
+  return selection.expression || selection.motion_group ? selection : null;
+}
+
+async function selectLive2DAvatarReaction(
+  avatarConfig: AvatarConfig,
+  userText: string,
+  assistantText: string,
+): Promise<Live2DAutonomousSelection | null> {
+  if (!avatarConfig.enabled || avatarConfig.model_type !== "live2d" || !avatarConfig.auto_select) return null;
+  const modelPath = avatarImagePath(avatarConfig);
+  if (!modelPath.endsWith(".model3.json")) return null;
+  const info = await loadLive2DManifestInfo(modelPath);
+  if (info.expressions.length === 0 && info.motions.length === 0) return null;
+  const prompt = buildLive2DSelectionPrompt(info, userText, assistantText);
+  const raw = await invoke<string>("send_chat_message", { message: prompt, history: [] });
+  const response = JSON.parse(raw) as ChatResponse;
+  return parseLive2DSelection(response.content || "", info);
+}
+
+async function emitAutonomousLive2DReaction(
+  avatarConfig: AvatarConfig,
+  userText: string,
+  assistantText: string,
+  emitAvatarEvent: (event: CompanionAvatarEvent) => void,
+): Promise<void> {
+  try {
+    const selection = await selectLive2DAvatarReaction(avatarConfig, userText, assistantText);
+    if (!selection) return;
+    if (selection.expression) {
+      emitAvatarEvent({ type: "expression", data: { name: selection.expression } });
+    }
+    if (selection.motion_group && typeof selection.motion_index === "number") {
+      emitAvatarEvent({ type: "motion", data: { name: selection.motion_group, index: selection.motion_index } });
+    }
+  } catch (error) {
+    console.warn("failed to select Live2D avatar reaction", error);
+  }
 }
 
 async function emitCompanionAvatarEvent(event: CompanionAvatarEvent): Promise<void> {
@@ -899,6 +1052,43 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     { class: "hint" },
     "Image uses a raster file. Live2D uses a .model3.json file. 3D is reserved for future VRM/GLB sidecars.",
   );
+  const avatarAutoSelect = el("input", { type: "checkbox" }) as HTMLInputElement;
+  avatarAutoSelect.checked = cfg.app.avatar.auto_select;
+  const avatarIdleExpression = el("input", {
+    type: "text",
+    value: cfg.app.avatar.idle_expression,
+    placeholder: "Normal",
+  }) as HTMLInputElement;
+  const avatarThinkingExpression = el("input", {
+    type: "text",
+    value: cfg.app.avatar.thinking_expression,
+    placeholder: "f01",
+  }) as HTMLInputElement;
+  const avatarSpeakingExpression = el("input", {
+    type: "text",
+    value: cfg.app.avatar.speaking_expression,
+    placeholder: "Normal",
+  }) as HTMLInputElement;
+  const avatarErrorExpression = el("input", {
+    type: "text",
+    value: cfg.app.avatar.error_expression,
+    placeholder: "Surprised",
+  }) as HTMLInputElement;
+  const avatarIdleMotion = el("input", {
+    type: "text",
+    value: cfg.app.avatar.idle_motion,
+    placeholder: "Idle",
+  }) as HTMLInputElement;
+  const avatarThinkingMotion = el("input", {
+    type: "text",
+    value: cfg.app.avatar.thinking_motion,
+    placeholder: "Flick",
+  }) as HTMLInputElement;
+  const avatarSpeakingMotion = el("input", {
+    type: "text",
+    value: cfg.app.avatar.speaking_motion,
+    placeholder: "Tap",
+  }) as HTMLInputElement;
 
   const backendSelect = el("select") as HTMLSelectElement;
   const backendLabels: Record<string, string> = {
@@ -1152,10 +1342,25 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     const loadCommand = loadCmdInput.value.trim();
     const unloadCommand = unloadCmdInput.value.trim();
     const avatarPathValue = avatarPath.value.trim();
+    const idleExpression = avatarIdleExpression.value.trim();
+    const thinkingExpression = avatarThinkingExpression.value.trim();
+    const speakingExpression = avatarSpeakingExpression.value.trim();
+    const errorExpression = avatarErrorExpression.value.trim();
+    const idleMotion = avatarIdleMotion.value.trim();
+    const thinkingMotion = avatarThinkingMotion.value.trim();
+    const speakingMotion = avatarSpeakingMotion.value.trim();
 
     if (avatarEnabled.checked !== cfg.app.avatar.enabled) updates.avatar_enabled = avatarEnabled.checked;
     if (avatarType.value !== cfg.app.avatar.model_type) updates.avatar_model_type = avatarType.value;
     if (avatarPathValue !== cfg.app.avatar.image_path) updates.avatar_image_path = avatarPathValue;
+    if (avatarAutoSelect.checked !== cfg.app.avatar.auto_select) updates.avatar_auto_select = avatarAutoSelect.checked;
+    if (idleExpression !== cfg.app.avatar.idle_expression) updates.avatar_idle_expression = idleExpression;
+    if (thinkingExpression !== cfg.app.avatar.thinking_expression) updates.avatar_thinking_expression = thinkingExpression;
+    if (speakingExpression !== cfg.app.avatar.speaking_expression) updates.avatar_speaking_expression = speakingExpression;
+    if (errorExpression !== cfg.app.avatar.error_expression) updates.avatar_error_expression = errorExpression;
+    if (idleMotion !== cfg.app.avatar.idle_motion) updates.avatar_idle_motion = idleMotion;
+    if (thinkingMotion !== cfg.app.avatar.thinking_motion) updates.avatar_thinking_motion = thinkingMotion;
+    if (speakingMotion !== cfg.app.avatar.speaking_motion) updates.avatar_speaking_motion = speakingMotion;
     if (apiKey) updates.api_key = apiKey;
     if (baseUrlInput.value !== cfg.remote_api.base_url) updates.base_url = baseUrlInput.value;
     if (modelInput.value !== cfg.remote_api.model) updates.model = modelInput.value;
@@ -1256,6 +1461,14 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
       fieldRow("Type", avatarType),
       fieldRow("Content", avatarPathControls),
       avatarHint,
+      fieldRow("Auto mood", avatarAutoSelect, "Ask the chat model to choose Live2D expression/motion from the current model vocabulary."),
+      fieldRow("Idle expression", avatarIdleExpression),
+      fieldRow("Thinking expression", avatarThinkingExpression),
+      fieldRow("Speaking expression", avatarSpeakingExpression),
+      fieldRow("Error expression", avatarErrorExpression),
+      fieldRow("Idle motion", avatarIdleMotion),
+      fieldRow("Thinking motion", avatarThinkingMotion),
+      fieldRow("Speaking motion", avatarSpeakingMotion),
     ),
     el(
       "div",
@@ -1330,7 +1543,19 @@ function fallbackConfig(): ConfigSnapshot {
     app: {
       name: "Hestia",
       theme: { mode: "system" },
-      avatar: { enabled: true, image_path: "companion-cat-placeholder.png", model_type: "placeholder" },
+      avatar: {
+        enabled: true,
+        image_path: "companion-cat-placeholder.png",
+        model_type: "placeholder",
+        auto_select: true,
+        idle_expression: "Normal",
+        thinking_expression: "f01",
+        speaking_expression: "Normal",
+        error_expression: "Surprised",
+        idle_motion: "Idle",
+        thinking_motion: "Flick",
+        speaking_motion: "Tap",
+      },
     },
     companion: { window: { x: null, y: null, width: COMPANION_DEFAULT_SIZE.width, height: COMPANION_DEFAULT_SIZE.height } },
     remote_api: { base_url: "https://api.deepseek.com", model: "deepseek-chat", has_api_key: false },
@@ -1415,7 +1640,7 @@ async function buildApp() {
     sidebarAvatarAdapter = null;
     avatar.replaceChildren();
     if (!avatarConfig.enabled) return;
-    sidebarAvatarAdapter = createAvatarAdapter(avatarConfig.model_type, avatarImagePath(avatarConfig));
+    sidebarAvatarAdapter = createAvatarAdapter(avatarConfig);
     sidebarAvatarAdapter.mount(avatar);
   };
   mountSidebarAvatar(cfg.app.avatar);
@@ -1602,7 +1827,7 @@ async function buildCompanionView() {
     avatarAdapter = null;
     avatar.replaceChildren();
     if (!avatarConfig.enabled) return;
-    avatarAdapter = createAvatarAdapter(avatarConfig.model_type, avatarImagePath(avatarConfig));
+    avatarAdapter = createAvatarAdapter(avatarConfig);
     avatarAdapter.mount(avatar);
   };
   mountCompanionAvatar(cfg.app.avatar);
@@ -1827,10 +2052,12 @@ async function buildCompanionView() {
     await dialog?.setAlwaysOnTop(alwaysOnTop).catch(() => {});
     updateDialogPlacement();
     if (text?.trim()) {
+      const content = text.trim();
       window.setTimeout(() => {
-        currentWindow.emitTo("companion_dialog", "companion-message", text.trim()).catch(() => {});
+        currentWindow.emitTo("companion_dialog", "companion-message", content).catch(() => {});
       }, 50);
-      dispatchAvatarEvent({ type: "speak_start", data: { duration_ms: speechDurationForText(text.trim()) } });
+      dispatchAvatarEvent({ type: "speak_start", data: { duration_ms: speechDurationForText(content) } });
+      void emitAutonomousLive2DReaction(cfg.app.avatar, "", content, dispatchAvatarEvent);
     }
   };
 
@@ -2008,7 +2235,8 @@ async function buildCompanionView() {
 }
 
 async function buildCompanionDialogView() {
-  applyTheme((await loadConfig()).app.theme.mode);
+  const cfg = await loadConfig();
+  applyTheme(cfg.app.theme.mode);
   watchSystemTheme();
 
   const app = document.getElementById("app");
@@ -2056,6 +2284,7 @@ async function buildCompanionDialogView() {
       appendDialogMessage("assistant", content);
       companionHistory.push({ role: "assistant", content });
       emitAvatarEvent({ type: "speak_start", data: { duration_ms: speechDurationForText(content) } });
+      void emitAutonomousLive2DReaction(cfg.app.avatar, text, content, emitAvatarEvent);
     } catch (error) {
       if (generation !== requestGeneration) return;
       appendDialogMessage("error", String(error));
@@ -2105,6 +2334,9 @@ async function buildCompanionDialogView() {
   }).catch(() => {});
   listen<string>("dialog-placement", (event) => {
     panel.dataset.placement = event.payload;
+  }).catch(() => {});
+  listen<AvatarConfig>("avatar-config-changed", (event) => {
+    cfg.app.avatar = event.payload;
   }).catch(() => {});
 
   panel.append(messages, el("div", { class: "companion-dialogue-input-row" }, input, sendBtn));

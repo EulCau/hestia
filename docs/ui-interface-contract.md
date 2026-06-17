@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-17 (Live2D manual control reliability)
+**Last updated:** 2026-06-17 (Live2D configurable reactions)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -118,12 +118,20 @@ Usage:    Scans the configured models_dir (default ~/models) for .gguf files.
 
 #### `update_settings`
 ```
-Arguments: { updates: Record<string, string|boolean> }
+Arguments: { updates: Record<string, string|boolean|number> }
   Recognized keys:
     "theme_mode"              → writes [app.theme] mode = value
     "avatar_enabled"          → writes [app.avatar] enabled = value (bool)
     "avatar_image_path"       → writes [app.avatar] image_path = value (string)
     "avatar_model_type"       → writes [app.avatar] model_type = value (string)
+    "avatar_auto_select"      → writes [app.avatar] auto_select = value (bool)
+    "avatar_idle_expression"  → writes [app.avatar] idle_expression = value (string)
+    "avatar_thinking_expression" → writes [app.avatar] thinking_expression = value (string)
+    "avatar_speaking_expression" → writes [app.avatar] speaking_expression = value (string)
+    "avatar_error_expression" → writes [app.avatar] error_expression = value (string)
+    "avatar_idle_motion"      → writes [app.avatar] idle_motion = value (string)
+    "avatar_thinking_motion"  → writes [app.avatar] thinking_motion = value (string)
+    "avatar_speaking_motion"  → writes [app.avatar] speaking_motion = value (string)
     "api_key"                 → writes [remote_api] api_key = value
     "base_url"                → writes [remote_api] base_url = value
     "model"                   → writes [remote_api] model = value
@@ -538,24 +546,40 @@ Supported event forms:
 { type: "idle" }
 ```
 
-Current Live2D mappings in `frontend/src/main.ts`:
+Default Live2D mappings in `[app.avatar]`:
 
 | Semantic name | Live2D expression |
 |---|---|
-| `thinking` | `f01` |
-| `normal`, `idle`, `speaking` | `Normal` |
+| `thinking` | `thinking_expression`, default `f01` |
+| `normal`, `idle` | `idle_expression`, default `Normal` |
+| `speaking` | `speaking_expression`, default `Normal` |
+| `confused`, `error` | `error_expression`, default `Surprised` |
 | `happy`, `blushing` | `Blushing` |
 | `sad` | `Sad` |
 | `angry` | `Angry` |
-| `surprised`, `confused`, `error`, `excited` | `Surprised` |
+| `surprised`, `excited` | `Surprised` |
 
 | Semantic name | Live2D motion group |
 |---|---|
-| `idle` | `Idle` |
-| `speaking`, `tap` | `Tap` |
-| `thinking` | `Flick` |
+| `idle` | `idle_motion`, default `Idle` |
+| `speaking`, `tap` | `speaking_motion`, default `Tap` |
+| `thinking` | `thinking_motion`, default `Flick` |
 
 Raw model motion group names may also be used directly. Available group names depend on the user-provided `.model3.json`.
+
+When `app.avatar.auto_select` is true, companion dialogue and proactive companion replies ask the
+configured chat model to choose a Live2D expression and/or motion from the current `.model3.json`
+manifest. The selector prompt tells the model to first decide whether candidate names are real
+emotion/action words instead of internal ids or sequence names, then return strict JSON:
+
+```json
+{"expression": "Happy", "motion_group": "Tap", "motion_index": 0}
+```
+
+The frontend validates the returned expression and motion group/index against the manifest before
+emitting any avatar event. If no meaningful candidate fits the context, the selector must use null.
+The current user message and assistant reply are appended near the end of the selector prompt so
+the stable instruction/schema text stays earlier in the prompt.
 
 The settings UI includes a Live2D test panel that reads the currently selected `.model3.json`,
 lists available Cubism expression names and motion groups/indices, and emits
@@ -609,6 +633,14 @@ interface ConfigSnapshot {
       enabled: boolean;
       image_path: string;    // relative to frontend public/, e.g. a placeholder image or user-provided .model3.json
       model_type: "placeholder" | "live2d" | "digital_human";
+      auto_select: boolean;
+      idle_expression: string;
+      thinking_expression: string;
+      speaking_expression: string;
+      error_expression: string;
+      idle_motion: string;
+      thinking_motion: string;
+      speaking_motion: string;
     };
   };
   companion: {
@@ -777,13 +809,20 @@ type AvatarConfig = {
   enabled: boolean;
   image_path: string;
   model_type: "placeholder" | "live2d" | "digital_human" | string;
+  auto_select: boolean;
+  idle_expression: string;
+  thinking_expression: string;
+  speaking_expression: string;
+  error_expression: string;
+  idle_motion: string;
+  thinking_motion: string;
+  speaking_motion: string;
 };
 ```
 
-When `update_settings` receives any of `avatar_enabled`, `avatar_image_path`, or
-`avatar_model_type`, the backend emits `avatar-config-changed` with `AvatarConfig`
-to `main`, `companion`, and `companion_dialog`. The main and companion windows
-must call `unmount()` on the current adapter before mounting the new adapter.
+When `update_settings` receives any avatar key, the backend emits `avatar-config-changed`
+with `AvatarConfig` to `main`, `companion`, and `companion_dialog`. The main and companion
+windows must call `unmount()` on the current adapter before mounting the new adapter.
 
 Future 3D implementation should keep the same adapter boundary:
 1. Add a renderer case in `createAvatarAdapter()` for `digital_human`.
