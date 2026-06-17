@@ -302,8 +302,22 @@ impl BackendProcess {
     }
 
     #[allow(dead_code)]
-    pub fn is_running(&self) -> bool {
-        self.child.is_some()
+    pub fn is_running(&mut self) -> bool {
+        let Some(child) = self.child.as_mut() else {
+            return false;
+        };
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                info!(pid = child.id(), status = %status, "backend process exited");
+                self.child = None;
+                false
+            }
+            Ok(None) => true,
+            Err(error) => {
+                warn!(pid = child.id(), error = %error, "failed to poll backend process");
+                true
+            }
+        }
     }
 }
 

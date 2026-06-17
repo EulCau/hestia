@@ -1392,7 +1392,11 @@ async function buildCompanionView() {
   shell.append(controls, avatar, resizeHandle);
   app.append(shell);
 
-  const dialogWindow = await Window.getByLabel("companion_dialog");
+  let dialogWindow = await Window.getByLabel("companion_dialog");
+  const getDialogWindow = async () => {
+    dialogWindow = await Window.getByLabel("companion_dialog");
+    return dialogWindow;
+  };
   const clampCompanionSize = (width: number, height: number) => ({
     width: Math.max(COMPANION_MIN_SIZE.width, Math.min(COMPANION_MAX_SIZE.width, Math.round(width))),
     height: Math.max(COMPANION_MIN_SIZE.height, Math.min(COMPANION_MAX_SIZE.height, Math.round(height))),
@@ -1543,7 +1547,8 @@ async function buildCompanionView() {
   };
 
   const updateDialogPlacement = async () => {
-    if (!dialogWindow) return;
+    const dialog = await getDialogWindow();
+    if (!dialog) return;
     try {
       const [monitor, position, size] = await Promise.all([
         currentMonitor(),
@@ -1552,7 +1557,7 @@ async function buildCompanionView() {
       ]);
       const workArea = monitor?.workArea;
       if (!workArea) return;
-      const dialogSize = await dialogWindow.outerSize().catch(() => ({ width: 320, height: 220 }));
+      const dialogSize = await dialog.outerSize().catch(() => ({ width: 320, height: 220 }));
       const margin = 10;
       const workLeft = workArea.position.x;
       const workTop = workArea.position.y;
@@ -1590,7 +1595,7 @@ async function buildCompanionView() {
           : placement === "bottom"
             ? position.y + size.height + margin
             : Math.max(workTop + margin, Math.min(centerY, workBottom - dialogSize.height - margin));
-      await dialogWindow.setPosition(new PhysicalPosition(x, y));
+      await dialog.setPosition(new PhysicalPosition(x, y));
       currentWindow.emitTo("companion_dialog", "dialog-placement", placement).catch(() => {});
     } catch {
       // Placement is best-effort; the dialog remains usable at its current position.
@@ -1600,9 +1605,9 @@ async function buildCompanionView() {
   const showDialog = async (text?: string) => {
     if (!companionWindowVisible) return;
     setDialogVisibleState(true);
-    await updateDialogPlacement();
     await invoke("set_companion_dialog_visible", { visible: true }).catch(() => dialogWindow?.show().catch(() => {}));
-    await dialogWindow?.setAlwaysOnTop(alwaysOnTop).catch(() => {});
+    const dialog = await getDialogWindow();
+    await dialog?.setAlwaysOnTop(alwaysOnTop).catch(() => {});
     updateDialogPlacement();
     if (text?.trim()) {
       window.setTimeout(() => {

@@ -19,36 +19,6 @@
         "height": 700,
         "resizable": true,
         "decorations": true
-      },
-      {
-        "label": "companion",
-        "title": "Hestia Companion",
-        "url": "/?view=companion",
-        "width": 240,
-        "height": 340,
-        "resizable": true,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "visibleOnAllWorkspaces": true,
-        "skipTaskbar": true,
-        "visible": false,
-        "focus": true
-      },
-      {
-        "label": "companion_dialog",
-        "title": "Hestia Companion Dialogue",
-        "url": "/?view=companion_dialog",
-        "width": 320,
-        "height": 220,
-        "resizable": false,
-        "decorations": false,
-        "transparent": true,
-        "alwaysOnTop": true,
-        "visibleOnAllWorkspaces": true,
-        "skipTaskbar": true,
-        "visible": false,
-        "focus": true
       }
     ],
     "security": {

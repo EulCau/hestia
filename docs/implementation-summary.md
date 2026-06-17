@@ -305,9 +305,9 @@ Frontend behavior:
 
 Behavior:
 - The main window remains the chat/settings control surface.
-- The companion window starts hidden and is shown/hidden through `set_companion_visible`.
+- The companion window is lazy-created on first show and then shown/hidden through `set_companion_visible`.
 - The companion view renders only the placeholder avatar and hover controls.
-- The companion dialogue uses a separate transparent window that follows the companion without overlapping the avatar when screen space allows, with `set_companion_dialog_visible` as a backend show/hide fallback.
+- The companion dialogue uses a separate window that follows the companion without overlapping the avatar when screen space allows, with `set_companion_dialog_visible` as a backend show/hide fallback.
 - Timer-triggered proactive speech is requested only from the companion view with `trigger = "companion_timer"`.
 - Blocked timer decisions and model errors stay silent in the companion surface.
 - Hover controls expose always-on-top, proactive speech, open chat, and dialogue toggles.
@@ -316,6 +316,7 @@ Behavior:
 - The tray left-click opens chat. The tray menu opens chat/settings/companion, restarts managed backend processes, or quits.
 - Initiative settings are hot-read before evaluation, so proactive speech enable/disable applies immediately.
 - The companion window restores configured bounds on startup and persists drag/resize changes to `config/user.toml`.
+- Linux companion/dialogue windows are lazy-created and currently non-transparent to avoid WebKitGTK/Wayland window-hint crashes and rendering artifacts; native transparent rendering or a sidecar renderer remains a separate path.
 - Dialogue visibility is synchronized through `companion-dialog-visible-changed`; hiding the companion or dialogue invalidates in-flight local dialogue requests.
 
 ---

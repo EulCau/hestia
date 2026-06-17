@@ -96,6 +96,52 @@ fn stop_managed_backends(state: &AppState) {
     }
 }
 
+fn stop_backend_processes(
+    local_backend_process: &Arc<Mutex<BackendProcess>>,
+    comfyui_backend_process: &Arc<Mutex<BackendProcess>>,
+) {
+    if let Ok(mut process) = local_backend_process.lock() {
+        process.kill("local_llm");
+    }
+    if let Ok(mut process) = comfyui_backend_process.lock() {
+        process.kill("comfyui");
+    }
+}
+
+#[cfg(unix)]
+fn install_signal_cleanup(
+    local_backend_process: Arc<Mutex<BackendProcess>>,
+    comfyui_backend_process: Arc<Mutex<BackendProcess>>,
+) {
+    use signal_hook::consts::signal::{SIGINT, SIGTERM};
+    use signal_hook::iterator::Signals;
+
+    match Signals::new([SIGINT, SIGTERM]) {
+        Ok(mut signals) => {
+            std::thread::spawn(move || {
+                if let Some(signal) = signals.forever().next() {
+                    warn!(
+                        signal,
+                        "received shutdown signal, stopping managed backends"
+                    );
+                    stop_backend_processes(&local_backend_process, &comfyui_backend_process);
+                    std::process::exit(128 + signal);
+                }
+            });
+        }
+        Err(error) => {
+            warn!(error = %error, "failed to install shutdown signal handler");
+        }
+    }
+}
+
+#[cfg(not(unix))]
+fn install_signal_cleanup(
+    _local_backend_process: Arc<Mutex<BackendProcess>>,
+    _comfyui_backend_process: Arc<Mutex<BackendProcess>>,
+) {
+}
+
 fn hide_window_and_maybe_idle_backend(
     app: &tauri::AppHandle,
     state: &AppState,
@@ -162,7 +208,7 @@ fn get_config_snapshot(state: tauri::State<'_, AppState>) -> String {
             state
                 .local_backend_process
                 .lock()
-                .map(|process| process.is_running())
+                .map(|mut process| process.is_running())
                 .unwrap_or(false),
         );
     }
@@ -175,7 +221,7 @@ fn get_config_snapshot(state: tauri::State<'_, AppState>) -> String {
             state
                 .comfyui_backend_process
                 .lock()
-                .map(|process| process.is_running())
+                .map(|mut process| process.is_running())
                 .unwrap_or(false),
         );
     }
@@ -348,6 +394,7 @@ fn apply_topmost(window: &tauri::WebviewWindow, enabled: bool) -> Result<(), Str
     window
         .set_always_on_top(enabled)
         .map_err(|e| format!("failed to update always-on-top: {}", e))?;
+    #[cfg(not(target_os = "linux"))]
     window
         .set_visible_on_all_workspaces(enabled)
         .map_err(|e| format!("failed to update workspace visibility: {}", e))?;
@@ -358,27 +405,72 @@ fn apply_window_topmost(window: &tauri::Window, enabled: bool) -> Result<(), Str
     window
         .set_always_on_top(enabled)
         .map_err(|e| format!("failed to update always-on-top: {}", e))?;
+    #[cfg(not(target_os = "linux"))]
     window
         .set_visible_on_all_workspaces(enabled)
         .map_err(|e| format!("failed to update workspace visibility: {}", e))?;
     Ok(())
 }
 
+fn ensure_companion_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window("companion") {
+        return Ok(window);
+    }
+    tauri::WebviewWindowBuilder::new(
+        app,
+        "companion",
+        tauri::WebviewUrl::App("/?view=companion".into()),
+    )
+    .title("Hestia Companion")
+    .inner_size(240.0, 340.0)
+    .resizable(true)
+    .decorations(false)
+    .transparent(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false)
+    .focused(true)
+    .build()
+    .map_err(|e| format!("failed to create companion window: {}", e))
+}
+
+fn ensure_companion_dialog_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+    if let Some(window) = app.get_webview_window("companion_dialog") {
+        return Ok(window);
+    }
+    tauri::WebviewWindowBuilder::new(
+        app,
+        "companion_dialog",
+        tauri::WebviewUrl::App("/?view=companion_dialog".into()),
+    )
+    .title("Hestia Companion Dialogue")
+    .inner_size(320.0, 220.0)
+    .resizable(false)
+    .decorations(false)
+    .transparent(false)
+    .always_on_top(true)
+    .skip_taskbar(true)
+    .visible(false)
+    .focused(true)
+    .build()
+    .map_err(|e| format!("failed to create companion dialog window: {}", e))
+}
+
 #[tauri::command]
 fn set_companion_visible(app: tauri::AppHandle, visible: bool) -> Result<String, String> {
-    let window = app
-        .get_webview_window("companion")
-        .ok_or_else(|| "companion window is not available".to_string())?;
     if visible {
+        let window = ensure_companion_window(&app)?;
         window
             .show()
             .map_err(|e| format!("failed to show companion: {}", e))?;
         apply_topmost(&window, true)?;
         let _ = window.set_focus();
     } else {
-        window
-            .hide()
-            .map_err(|e| format!("failed to hide companion: {}", e))?;
+        if let Some(window) = app.get_webview_window("companion") {
+            window
+                .hide()
+                .map_err(|e| format!("failed to hide companion: {}", e))?;
+        }
         if let Some(dialog) = app.get_webview_window("companion_dialog") {
             dialog
                 .hide()
@@ -401,15 +493,13 @@ fn set_companion_visible(app: tauri::AppHandle, visible: bool) -> Result<String,
 
 #[tauri::command]
 fn set_companion_dialog_visible(app: tauri::AppHandle, visible: bool) -> Result<String, String> {
-    let window = app
-        .get_webview_window("companion_dialog")
-        .ok_or_else(|| "companion dialog window is not available".to_string())?;
     if visible {
+        let window = ensure_companion_dialog_window(&app)?;
         window
             .show()
             .map_err(|e| format!("failed to show companion dialog: {}", e))?;
         apply_topmost(&window, true)?;
-    } else {
+    } else if let Some(window) = app.get_webview_window("companion_dialog") {
         window
             .hide()
             .map_err(|e| format!("failed to hide companion dialog: {}", e))?;
@@ -425,10 +515,9 @@ fn set_companion_dialog_visible(app: tauri::AppHandle, visible: bool) -> Result<
 
 #[tauri::command]
 fn set_companion_always_on_top(app: tauri::AppHandle, enabled: bool) -> Result<String, String> {
-    let window = app
-        .get_webview_window("companion")
-        .ok_or_else(|| "companion window is not available".to_string())?;
-    apply_topmost(&window, enabled)?;
+    if let Some(window) = app.get_webview_window("companion") {
+        apply_topmost(&window, enabled)?;
+    }
     if let Some(dialog) = app.get_webview_window("companion_dialog") {
         apply_topmost(&dialog, enabled)?;
     }
@@ -1311,9 +1400,10 @@ pub fn run() {
     let (job_tx, job_rx) = mpsc::channel::<SchedulerCommand>(64);
     let scheduler_resources = resources.clone();
     let initiative_runtime = Arc::new(Mutex::new(InitiativeRuntime::new()));
+    install_signal_cleanup(backend_process.clone(), comfyui_process.clone());
     info!("config loaded and observability initialized");
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(AppState {
@@ -1456,8 +1546,14 @@ pub fn run() {
             send_chat_message,
             generate_test_image,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Hestia");
+        .build(tauri::generate_context!())
+        .expect("error while building Hestia");
+    app.run(|app_handle, event| {
+        if let tauri::RunEvent::Exit = event {
+            let state = app_handle.state::<AppState>();
+            stop_managed_backends(&state);
+        }
+    });
 }
 
 #[cfg(test)]

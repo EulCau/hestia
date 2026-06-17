@@ -79,29 +79,10 @@ body {
 }
 
 body.companion-body {
-  background: transparent;
+  background: var(--bg-primary);
   overflow: hidden;
   user-select: none;
   -webkit-user-select: none;
-}
-
-body.companion-body::before {
-  content: "";
-  position: fixed;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: rgba(0, 0, 0, 0.001);
-  animation: companion-repaint-plane 1000ms steps(2, end) infinite;
-}
-
-@keyframes companion-repaint-plane {
-  from {
-    opacity: 0.98;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 button,
@@ -685,7 +666,7 @@ button {
 }
 
 .companion-body #app {
-  background: transparent;
+  background: var(--bg-primary);
   user-select: none;
   -webkit-user-select: none;
 }
@@ -789,7 +770,7 @@ button {
 }
 
 .companion-dialog-body #app {
-  background: transparent;
+  background: var(--bg-primary);
 }
 
 .companion-dialog-panel {

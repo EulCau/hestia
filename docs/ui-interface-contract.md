@@ -412,13 +412,13 @@ The `applyTheme(mode)` function is called:
 
 ### 3.4 Companion Window State
 
-The app has three Tauri windows:
+The app has one startup Tauri window and two lazy-created companion windows:
 
 | Label | Initial visibility | Purpose |
 |---|---|---|
 | `main` | visible | Chat, settings, manual controls |
-| `companion` | hidden | Transparent always-on-top desktop companion surface |
-| `companion_dialog` | hidden | Independent transparent dialogue bubble following the companion |
+| `companion` | created hidden on first `set_companion_visible(true)` | Always-on-top desktop companion surface |
+| `companion_dialog` | created hidden on first `set_companion_dialog_visible(true)` | Independent dialogue bubble following the companion |
 
 The main window controls companion visibility through:
 
@@ -575,8 +575,9 @@ Initiative hot update:
 - Changes to `initiative_enabled`, including the companion toolbar Talk toggle, take effect immediately.
 
 Wayland note:
-- The companion uses Tauri `alwaysOnTop` and `visibleOnAllWorkspaces`, reapplies them on focus loss, and the frontend periodically reasserts the flag while the companion Top toggle is enabled.
+- The companion uses Tauri `alwaysOnTop`, reapplies it on focus loss, and the frontend periodically reasserts the flag while the companion Top toggle is enabled. Non-Linux builds also request `visibleOnAllWorkspaces`.
 - Some Wayland compositors may still restrict true global always-on-top behavior; compositor-specific approaches should be considered separately.
+- Linux builds currently keep the companion and dialogue windows non-transparent and do not pre-create them at app startup to avoid WebKitGTK/Wayland window-hint crashes and rendering artifacts. Native transparent rendering or a sidecar renderer should be treated as a separate platform-specific path.
 
 ---
 
