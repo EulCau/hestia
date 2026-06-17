@@ -116,6 +116,7 @@ type CompanionAvatarEventType = "expression" | "motion" | "speak_start" | "speak
 
 interface CompanionAvatarEventPayload {
   name?: string;
+  index?: number;
   weight?: number;
   duration_ms?: number;
   transition_ms?: number;
@@ -127,6 +128,35 @@ interface CompanionAvatarEvent {
   type: CompanionAvatarEventType;
   data?: CompanionAvatarEventPayload;
 }
+
+interface Live2DMotionOption {
+  group: string;
+  index: number;
+  label: string;
+  file?: string;
+  sound?: string;
+}
+
+interface Live2DManifestInfo {
+  expressions: string[];
+  motions: Live2DMotionOption[];
+  hasAudio: boolean;
+}
+
+interface Live2DMotionState {
+  shouldRequestIdleMotion?: () => boolean;
+}
+
+interface Live2DMotionManager {
+  state?: Live2DMotionState;
+  stopAllMotions?: () => void;
+}
+
+type Live2DModelWithMotionManager = Live2DModelInstance & {
+  internalModel?: {
+    motionManager?: Live2DMotionManager;
+  };
+};
 
 let lastActivityReport = 0;
 
@@ -240,6 +270,14 @@ function cacheBustedResourceUrl(path: string): string {
   return `${url}${separator}v=${Date.now()}`;
 }
 
+function live2DMotionManager(model: Live2DModelInstance | null): Live2DMotionManager | undefined {
+  return (model as Live2DModelWithMotionManager | null)?.internalModel?.motionManager;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
 function createPlaceholderAvatarAdapter(imagePath: string): AvatarAdapter {
   let container: HTMLElement | null = null;
   let image: HTMLImageElement | null = null;
@@ -337,6 +375,9 @@ async function ensureLive2DRuntime(): Promise<typeof import("pixi-live2d-display
   }
   if (!live2dRuntime) {
     live2dRuntime = import("pixi-live2d-display/cubism4").then((runtime) => {
+      runtime.config.sound = false;
+      runtime.SoundManager.volume = 0;
+      runtime.SoundManager.destroy();
       loadedLive2dRuntime = runtime;
       return runtime;
     });
@@ -351,6 +392,11 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
   let resizeObserver: ResizeObserver | null = null;
   let destroyed = false;
   const pendingEvents: CompanionAvatarEvent[] = [];
+
+  const stopLive2DMotions = () => {
+    live2DMotionManager(model)?.stopAllMotions?.();
+    loadedLive2dRuntime?.SoundManager.destroy();
+  };
 
   const fitModel = () => {
     if (!container || !model || !app) return;
@@ -387,7 +433,10 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
     if (type === "motion") {
       const motion = LIVE2D_MOTION_MAP[(data?.name || "idle").toLowerCase()] ?? data?.name;
       if (motion && loadedLive2dRuntime) {
-        model.motion(motion, undefined, loadedLive2dRuntime.MotionPriority.NORMAL).catch(() => {});
+        const index = Number.isFinite(data?.index) ? data?.index : undefined;
+        stopLive2DMotions();
+        model.motion(motion, index, loadedLive2dRuntime.MotionPriority.FORCE).catch(() => {});
+        loadedLive2dRuntime.SoundManager.destroy();
       }
       return;
     }
@@ -395,7 +444,9 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
     if (type === "speak_start") {
       model.expression(LIVE2D_EXPRESSION_MAP.speaking).catch(() => {});
       if (loadedLive2dRuntime) {
-        model.motion(LIVE2D_MOTION_MAP.speaking, undefined, loadedLive2dRuntime.MotionPriority.NORMAL).catch(() => {});
+        stopLive2DMotions();
+        model.motion(LIVE2D_MOTION_MAP.speaking, undefined, loadedLive2dRuntime.MotionPriority.FORCE).catch(() => {});
+        loadedLive2dRuntime.SoundManager.destroy();
       }
       return;
     }
@@ -403,7 +454,9 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
     if (type === "speak_stop" || type === "idle") {
       model.expression(LIVE2D_EXPRESSION_MAP.normal).catch(() => {});
       if (loadedLive2dRuntime) {
-        model.motion(LIVE2D_MOTION_MAP.idle, undefined, loadedLive2dRuntime.MotionPriority.IDLE).catch(() => {});
+        stopLive2DMotions();
+        model.motion(LIVE2D_MOTION_MAP.idle, undefined, loadedLive2dRuntime.MotionPriority.FORCE).catch(() => {});
+        loadedLive2dRuntime.SoundManager.destroy();
       }
     }
   };
@@ -448,10 +501,15 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
         return;
       }
 
+      const motionManager = live2DMotionManager(model);
+      if (motionManager?.state?.shouldRequestIdleMotion) {
+        motionManager.state.shouldRequestIdleMotion = () => false;
+      }
       model.anchor.set(0.5, 0.5);
       app.stage.addChild(model);
       fitModel();
-      model.motion(LIVE2D_MOTION_MAP.idle, undefined, MotionPriority.IDLE).catch(() => {});
+      model.motion(LIVE2D_MOTION_MAP.idle, undefined, MotionPriority.FORCE).catch(() => {});
+      loadedLive2dRuntime?.SoundManager.destroy();
       while (pendingEvents.length > 0) {
         const event = pendingEvents.shift();
         if (event) applyEvent(event.type, event.data);
@@ -485,6 +543,7 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
       resizeObserver?.disconnect();
       resizeObserver = null;
       pendingEvents.length = 0;
+      stopLive2DMotions();
       model?.destroy();
       app?.destroy(true, { children: true, texture: true, baseTexture: true });
       if (container) {
@@ -513,6 +572,142 @@ function createAvatarAdapter(modelType: string, imagePath: string): AvatarAdapte
     return createPlaceholderAvatarAdapter(imagePath || "companion-cat-placeholder.png");
   }
   return createPlaceholderAvatarAdapter("companion-cat-placeholder.png");
+}
+
+function motionLabel(group: string, index: number, file?: string): string {
+  const name = file?.split(/[\\/]/).pop()?.replace(/\.motion3?\.json$/i, "");
+  return `${group} #${index}${name ? ` (${name})` : ""}`;
+}
+
+async function loadLive2DManifestInfo(modelPath: string): Promise<Live2DManifestInfo> {
+  const response = await fetch(cacheBustedResourceUrl(modelPath));
+  if (!response.ok) {
+    throw new Error(`failed to load ${modelPath}: ${response.status}`);
+  }
+  const manifest = await response.json();
+  const fileReferences = manifest.FileReferences ?? manifest.fileReferences ?? manifest;
+  const expressions = Array.isArray(fileReferences.Expressions)
+    ? fileReferences.Expressions.map((expression: { Name?: string; name?: string; File?: string; file?: string }, index: number) => {
+        const file = expression.File ?? expression.file;
+        return expression.Name ?? expression.name ?? file?.split(/[\\/]/).pop()?.replace(/\.exp3\.json$/i, "") ?? `Expression ${index}`;
+      })
+    : [];
+  const motionDefinitions = (fileReferences.Motions ?? fileReferences.motions ?? {}) as Record<string, unknown[]>;
+  const motions: Live2DMotionOption[] = [];
+  let hasAudio = false;
+  for (const [group, definitions] of Object.entries(motionDefinitions)) {
+    if (!Array.isArray(definitions)) continue;
+    definitions.forEach((definition, index) => {
+      if (!definition || typeof definition !== "object") return;
+      const motion = definition as { File?: string; file?: string; Sound?: string; sound?: string };
+      const file = motion.File ?? motion.file;
+      const sound = motion.Sound ?? motion.sound;
+      if (sound) hasAudio = true;
+      motions.push({ group, index, label: motionLabel(group, index, file), file, sound });
+    });
+  }
+  return { expressions, motions, hasAudio };
+}
+
+async function emitCompanionAvatarEvent(event: CompanionAvatarEvent): Promise<void> {
+  await invoke("set_companion_visible", { visible: true });
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    try {
+      await getCurrentWindow().emitTo("companion", "companion-avatar-event", event);
+      return;
+    } catch (error) {
+      lastError = error;
+      await delay(120);
+    }
+  }
+  throw lastError;
+}
+
+function buildLive2DDebugPanel(modelPath: string): HTMLElement {
+  const overlay = el("div", { class: "settings-overlay" });
+  const panel = el("section", { class: "settings-panel live2d-debug-panel", role: "dialog", "aria-modal": "true" });
+  const status = el("div", { class: "settings-status", style: "display:none" });
+  const expressionSelect = el("select") as HTMLSelectElement;
+  const motionSelect = el("select") as HTMLSelectElement;
+  const expressionBtn = el("button", { class: "btn btn-primary", type: "button" }, "Expression");
+  const motionBtn = el("button", { class: "btn btn-primary", type: "button" }, "Motion");
+  const idleBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Idle");
+  const speakStartBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Speak");
+  const speakStopBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Stop");
+  const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Close");
+
+  const sendDebugEvent = async (event: CompanionAvatarEvent, label: string) => {
+    try {
+      await emitCompanionAvatarEvent(event);
+      setStatus(status, true, `${label} sent.`);
+    } catch (error) {
+      setStatus(status, false, String(error));
+    }
+  };
+
+  const setUnavailable = (message: string) => {
+    expressionSelect.replaceChildren(option("", "No expressions", ""));
+    motionSelect.replaceChildren(option("", "No motions", ""));
+    expressionBtn.setAttribute("disabled", "true");
+    motionBtn.setAttribute("disabled", "true");
+    setStatus(status, false, message);
+  };
+
+  void loadLive2DManifestInfo(modelPath)
+    .then((info) => {
+      expressionSelect.replaceChildren();
+      motionSelect.replaceChildren();
+      if (info.expressions.length === 0) {
+        expressionSelect.append(option("", "No expressions", ""));
+        expressionBtn.setAttribute("disabled", "true");
+      } else {
+        info.expressions.forEach((name) => expressionSelect.append(option(name, name, expressionSelect.value)));
+      }
+      if (info.motions.length === 0) {
+        motionSelect.append(option("", "No motions", ""));
+        motionBtn.setAttribute("disabled", "true");
+      } else {
+        info.motions.forEach((motion) => {
+          const item = option(`${motion.group}::${motion.index}`, motion.label, motionSelect.value);
+          item.dataset.group = motion.group;
+          item.dataset.index = String(motion.index);
+          motionSelect.append(item);
+        });
+      }
+      setStatus(status, true, info.hasAudio ? "Loaded. Motion audio is muted by Hestia." : "Loaded.");
+    })
+    .catch((error) => setUnavailable(String(error)));
+
+  expressionBtn.addEventListener("click", () => {
+    if (!expressionSelect.value) return;
+    void sendDebugEvent({ type: "expression", data: { name: expressionSelect.value } }, `Expression ${expressionSelect.value}`);
+  });
+  motionBtn.addEventListener("click", () => {
+    const selected = motionSelect.selectedOptions[0];
+    const group = selected?.dataset.group;
+    const index = Number(selected?.dataset.index);
+    if (!group || !Number.isFinite(index)) return;
+    void sendDebugEvent({ type: "motion", data: { name: group, index } }, `${group} #${index}`);
+  });
+  idleBtn.addEventListener("click", () => void sendDebugEvent({ type: "idle" }, "Idle"));
+  speakStartBtn.addEventListener("click", () =>
+    void sendDebugEvent({ type: "speak_start", data: { duration_ms: 3000 } }, "Speak"),
+  );
+  speakStopBtn.addEventListener("click", () => void sendDebugEvent({ type: "speak_stop" }, "Stop"));
+  closeBtn.addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) overlay.remove();
+  });
+
+  panel.append(
+    el("h2", {}, "Live2D"),
+    status,
+    el("div", { class: "settings-section" }, fieldRow("Expression", expressionSelect), fieldRow("Motion", motionSelect)),
+    el("div", { class: "settings-actions live2d-debug-actions" }, expressionBtn, motionBtn, idleBtn, speakStartBtn, speakStopBtn, closeBtn),
+  );
+  overlay.append(panel);
+  return overlay;
 }
 
 function option(value: string, label: string, selectedValue: string): HTMLOptionElement {
@@ -867,6 +1062,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   });
 
   const browseAvatar = el("button", { class: "btn btn-secondary", type: "button" }, "Browse") as HTMLButtonElement;
+  const live2dDebugBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Live2D Test") as HTMLButtonElement;
   browseAvatar.addEventListener("click", async () => {
     const selected =
       avatarType.value === "live2d"
@@ -894,6 +1090,14 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
         avatarHint.textContent = `Avatar selection failed: ${String(error)}`;
       }
     }
+  });
+  live2dDebugBtn.addEventListener("click", () => {
+    const modelPath = avatarPath.value.trim();
+    if (avatarType.value !== "live2d" || !modelPath.endsWith(".model3.json")) {
+      avatarHint.textContent = "Select prepared Live2D content before testing.";
+      return;
+    }
+    document.body.append(buildLive2DDebugPanel(modelPath));
   });
   avatarType.addEventListener("change", () => {
     if (avatarType.value === "live2d") {
@@ -1035,7 +1239,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   });
 
   const modelControls = el("div", { class: "inline-controls" }, localModelInput, browseBtn, scanBtn);
-  const avatarPathControls = el("div", { class: "inline-controls two" }, avatarPath, browseAvatar);
+  const avatarPathControls = el("div", { class: "inline-controls" }, avatarPath, browseAvatar, live2dDebugBtn);
   const comfyRootControls = el("div", { class: "inline-controls two" }, comfyRootDir, browseComfyRoot);
   const comfyPythonControls = el("div", { class: "inline-controls two" }, comfyPython, browseComfyPython);
   const comfyWorkflowControls = el("div", { class: "inline-controls two" }, comfyWorkflow, browseWorkflow);

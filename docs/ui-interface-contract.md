@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-17 (Avatar hot-apply settings)
+**Last updated:** 2026-06-17 (Live2D manual control reliability)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -480,6 +480,7 @@ type CompanionAvatarEventType =
 
 interface CompanionAvatarEventPayload {
   name?: string;
+  index?: number; // optional motion index inside a Live2D motion group
   weight?: number;
   duration_ms?: number;
   transition_ms?: number;
@@ -524,6 +525,7 @@ Supported event forms:
 // Play a motion group. The adapter accepts mapped names and raw Cubism motion groups.
 { type: "motion", data: { name: "tap" } }
 { type: "motion", data: { name: "FlickDown" } }
+{ type: "motion", data: { name: "Tap", index: 0 } }
 
 // Start/stop speaking animation.
 { type: "speak_start", data: { duration_ms: 3000 } }
@@ -554,6 +556,17 @@ Current Live2D mappings in `frontend/src/main.ts`:
 | `thinking` | `Flick` |
 
 Raw model motion group names may also be used directly. Available group names depend on the user-provided `.model3.json`.
+
+The settings UI includes a Live2D test panel that reads the currently selected `.model3.json`,
+lists available Cubism expression names and motion groups/indices, and emits
+`companion-avatar-event` to the `companion` window for manual verification. The panel first
+calls `set_companion_visible(true)` and retries briefly so events are not lost while the companion
+window is being created.
+Motion audio is disabled by Hestia through `pixi-live2d-display` global sound settings;
+Live2D motion sound files may exist in user models but must not play through the avatar adapter.
+The Live2D adapter also disables pixi-live2d-display automatic idle motion requests. Hestia sends
+idle, speaking, and manual motion events explicitly, so model presets cannot override test-panel
+controls after a motion completes.
 
 Companion dialogue bubble placement:
 - Default placement is above the avatar.

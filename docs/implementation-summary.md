@@ -1,6 +1,6 @@
 # Hestia Implementation Summary
 
-**Date:** 2026-06-16
+**Date:** 2026-06-17
 **Current Phase:** 8 avatar settings + Live2D companion adapter MVP
 
 ---
@@ -110,7 +110,7 @@ interface AvatarAdapter {
 function createAvatarAdapter(modelType: string, imagePath: string): AvatarAdapter
 ```
 
-**Current use:** `createAvatarAdapter()` supports the placeholder image adapter and the Live2D canvas adapter. The settings UI can select image paths, Live2D `.model3.json` paths, and future 3D model paths. The Live2D adapter loads user-provided Cubism 3/4 `.model3.json` resources and consumes the existing companion avatar event contract. The 3D selection is stored as configuration only until a renderer or sidecar is implemented.
+**Current use:** `createAvatarAdapter()` supports the placeholder image adapter and the Live2D canvas adapter. The settings UI can select image paths, Live2D `.model3.json` paths, and future 3D model paths. The Live2D adapter loads user-provided Cubism 3/4 `.model3.json` resources and consumes the existing companion avatar event contract. Manual Live2D controls use explicit events and disable automatic runtime idle requests so preset motions do not override Hestia-driven behavior. The 3D selection is stored as configuration only until a renderer or sidecar is implemented.
 
 ### 3.2 Worker Trait
 
@@ -244,12 +244,12 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 ./frontend/node_modules/.bin/tauri dev
 
 Phase 8 now has the second-window lifecycle, placeholder avatar adapter, Live2D adapter MVP, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, persisted companion position/size, synchronized dialogue visibility lifecycle, and companion avatar events.
 
-Recommended next step: polish the Live2D behavior mapping and visual QA before Plugin Boundary. VRM remains a later rendering upgrade.
+Recommended next step: run visual QA on Live2D motion/expression mapping before Plugin Boundary. VRM remains a later rendering upgrade.
 
 Resume note for a new conversation:
 - Start from [docs/HANDOFF.md](/home/eulcau/CXTX/hestia/docs/HANDOFF.md), §10 and §11.
 - Treat [docs/ui-interface-contract.md](/home/eulcau/CXTX/hestia/docs/ui-interface-contract.md), §3.4, as the authoritative companion window/dialogue state contract.
-- The next implementation should polish Live2D expression/motion mapping and visual QA against the existing `AvatarAdapter.onEvent(...)` contract. Do not add Plugin Boundary work until the Live2D adapter behavior is stable.
+- The settings UI includes a Live2D test panel for model expressions and motion group/index playback. The next implementation should run visual QA against representative models. Do not add Plugin Boundary work until the Live2D adapter behavior is stable.
 - Validate with `cargo fmt --manifest-path src-tauri/Cargo.toml`, `cargo test --manifest-path src-tauri/Cargo.toml`, `npm run build`, and `./frontend/node_modules/.bin/tauri build --debug --no-bundle`.
 
 ## 6.1 Phase 6: Initiative System (2026-06-13)

@@ -556,8 +556,17 @@ button {
 
 .settings-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 10px;
+}
+
+.live2d-debug-panel {
+  width: min(620px, 100%);
+}
+
+.live2d-debug-actions {
+  justify-content: flex-start;
 }
 
 .btn {
