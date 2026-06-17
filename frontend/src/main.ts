@@ -234,6 +234,12 @@ function avatarResourceUrl(path: string): string {
   return `/${path.replace(/^\/+/, "")}`;
 }
 
+function cacheBustedResourceUrl(path: string): string {
+  const url = avatarResourceUrl(path);
+  const separator = url.includes("?") ? "&" : "?";
+  return `${url}${separator}v=${Date.now()}`;
+}
+
 function createPlaceholderAvatarAdapter(imagePath: string): AvatarAdapter {
   let container: HTMLElement | null = null;
   let image: HTMLImageElement | null = null;
@@ -405,6 +411,7 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
   const load = async (mountPoint: HTMLElement) => {
     try {
       const { Live2DModel, MotionPreloadStrategy, MotionPriority } = await ensureLive2DRuntime();
+      if (destroyed || container !== mountPoint) return;
       const pixiOptions: PIXI.IApplicationOptions & {
         premultipliedAlpha: boolean;
         useContextAlpha: "notMultiplied";
@@ -431,7 +438,7 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
       app.view.classList.add("live2d-canvas");
       mountPoint.append(app.view);
 
-      model = await Live2DModel.from(avatarResourceUrl(modelPath), {
+      model = await Live2DModel.from(cacheBustedResourceUrl(modelPath), {
         autoInteract: false,
         motionPreload: MotionPreloadStrategy.IDLE,
       });
@@ -451,7 +458,13 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
       }
     } catch (error) {
       console.error("failed to load Live2D avatar", error);
-      if (mountPoint.isConnected && !mountPoint.querySelector("img")) {
+      if (destroyed || container !== mountPoint) return;
+      model?.destroy();
+      app?.destroy(true, { children: true, texture: true, baseTexture: true });
+      model = null;
+      app = null;
+      mountPoint.replaceChildren();
+      if (mountPoint.isConnected) {
         createPlaceholderAvatarAdapter("companion-cat-placeholder.png").mount(mountPoint);
       }
     }
@@ -873,7 +886,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
         });
         avatarHint.textContent =
           avatarType.value === "live2d"
-            ? "Live2D content prepared under frontend/public/live2d/current."
+            ? "Live2D content prepared under frontend/public/live2d."
             : avatarType.value === "placeholder"
               ? "Image prepared under frontend/public/avatar."
               : "3D model path stored for a future renderer.";

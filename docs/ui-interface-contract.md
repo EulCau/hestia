@@ -85,8 +85,9 @@ Usage:
   - placeholder: copies the selected image file into ignored local cache
     `frontend/public/avatar/current.<ext>` and returns `avatar/current.<ext>`
   - live2d: accepts a directory or `.model3.json`, finds the `.model3.json`, copies
-    the runtime directory into ignored local cache `frontend/public/live2d/current/`,
-    and returns a public-relative `.model3.json` path
+    the runtime directory into an ignored versioned local cache under
+    `frontend/public/live2d/prepared-<timestamp>/`, and returns a public-relative
+    `.model3.json` path
   - digital_human: currently returns the selected path unchanged for future renderer use
 ```
 Arguments: none
@@ -753,7 +754,7 @@ interface AvatarAdapter {
 
 Avatar settings UI:
 - `placeholder` stores an image path. The file picker copies selected images into ignored local cache `frontend/public/avatar/`.
-- `live2d` stores a `.model3.json` path. The file picker selects a directory, finds the model JSON, and copies runtime files into ignored local cache `frontend/public/live2d/current/`.
+- `live2d` stores a `.model3.json` path. The file picker selects a directory, finds the model JSON, and copies runtime files into an ignored versioned local cache under `frontend/public/live2d/`.
 - `digital_human` stores a future 3D model path such as `.vrm`, `.glb`, or `.gltf`. The current frontend records this setting but falls back to the placeholder adapter until a 3D renderer or sidecar is implemented.
 
 Hot-apply event:

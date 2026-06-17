@@ -11,6 +11,7 @@ mod workers;
 
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Deserialize;
 use tauri::menu::MenuBuilder;
@@ -608,6 +609,13 @@ fn find_model3_json(path: &Path) -> Result<PathBuf, String> {
     Err("no .model3.json file found in selected directory".into())
 }
 
+fn timestamp_millis() -> Result<u128, String> {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .map_err(|e| format!("system clock is before UNIX_EPOCH: {}", e))
+}
+
 #[tauri::command]
 fn prepare_avatar_content(path: String, model_type: String) -> Result<String, String> {
     let source = resolve_project_path(path.trim());
@@ -622,19 +630,15 @@ fn prepare_avatar_content(path: String, model_type: String) -> Result<String, St
                 .to_path_buf()
         };
         let public_live2d = resolve_project_path("frontend/public/live2d");
-        let target = public_live2d.join("current");
-        if !root.starts_with(&target) {
-            if target.exists() {
-                std::fs::remove_dir_all(&target)
-                    .map_err(|e| format!("failed to clear {}: {}", target.display(), e))?;
-            }
-            copy_dir_recursive(&root, &target)?;
-        }
+        let target_name = format!("prepared-{}", timestamp_millis()?);
+        let target = public_live2d.join(&target_name);
+        copy_dir_recursive(&root, &target)?;
         let model_relative_to_root = model_path
             .strip_prefix(&root)
             .map_err(|_| "failed to resolve Live2D model path".to_string())?;
         return Ok(format!(
-            "live2d/current/{}",
+            "live2d/{}/{}",
+            target_name,
             model_relative_to_root.to_string_lossy().replace('\\', "/")
         ));
     }
