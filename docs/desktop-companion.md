@@ -245,6 +245,8 @@ For a 3D VRM or other WebGL model inside the Tauri webview:
 3. Treat model pose, expression, lip-sync, and idle animation as application state/events. The model renderer should consume events; it should not own scheduler or worker state.
 4. Keep the transparent window small and test GPU usage. If WebGL transparency or performance is not stable, move to the sidecar approach below.
 
+The settings UI already reserves `ConfigSnapshot.app.avatar.model_type = "digital_human"` and stores a selected `.vrm`, `.glb`, or `.gltf` path. Until a renderer exists, this selection is configuration state only and must fall back to the placeholder surface.
+
 For a Unity/VRM sidecar:
 1. Keep Tauri as the controller and tray/window lifecycle owner.
 2. Run Unity as a managed sidecar process only after the window lifecycle is stable.

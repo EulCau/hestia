@@ -1,7 +1,7 @@
 # Hestia Implementation Summary
 
 **Date:** 2026-06-16
-**Current Phase:** 8 Live2D companion adapter MVP
+**Current Phase:** 8 avatar settings + Live2D companion adapter MVP
 
 ---
 
@@ -110,7 +110,7 @@ interface AvatarAdapter {
 function createAvatarAdapter(modelType: string, imagePath: string): AvatarAdapter
 ```
 
-**Current use:** `createAvatarAdapter()` supports the placeholder image adapter and the Live2D canvas adapter. The Live2D adapter loads user-provided Cubism 3/4 `.model3.json` resources from `frontend/public/live2d/` and consumes the existing companion avatar event contract.
+**Current use:** `createAvatarAdapter()` supports the placeholder image adapter and the Live2D canvas adapter. The settings UI can select image paths, Live2D `.model3.json` paths, and future 3D model paths. The Live2D adapter loads user-provided Cubism 3/4 `.model3.json` resources and consumes the existing companion avatar event contract. The 3D selection is stored as configuration only until a renderer or sidecar is implemented.
 
 ### 3.2 Worker Trait
 

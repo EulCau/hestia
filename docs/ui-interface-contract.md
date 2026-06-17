@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-16 (Phase 8 Live2D avatar adapter MVP)
+**Last updated:** 2026-06-17 (Avatar settings and future 3D hook)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -104,6 +104,9 @@ Usage:    Scans the configured models_dir (default ~/models) for .gguf files.
 Arguments: { updates: Record<string, string|boolean> }
   Recognized keys:
     "theme_mode"              → writes [app.theme] mode = value
+    "avatar_enabled"          → writes [app.avatar] enabled = value (bool)
+    "avatar_image_path"       → writes [app.avatar] image_path = value (string)
+    "avatar_model_type"       → writes [app.avatar] model_type = value (string)
     "api_key"                 → writes [remote_api] api_key = value
     "base_url"                → writes [remote_api] base_url = value
     "model"                   → writes [remote_api] model = value
@@ -727,6 +730,17 @@ interface AvatarAdapter {
 - `mount(container)` — receives the avatar mount element. The adapter is responsible for creating and appending its own DOM subtree (canvas, video, img, etc.).
 - `unmount()` — cleans up event listeners, animation loops, WebGL contexts.
 - `onEvent` — maps companion avatar events to renderer behavior. The Live2D adapter maps expression, motion, speaking, idle, and look-at events to Cubism expressions, motion groups, and focus coordinates.
+
+Avatar settings UI:
+- `placeholder` stores an image path. The path may be public-relative or a local file selected through the Tauri dialog.
+- `live2d` stores a `.model3.json` path. Related textures, motions, expressions, and physics files must remain beside that file according to the Live2D model JSON references.
+- `digital_human` stores a future 3D model path such as `.vrm`, `.glb`, or `.gltf`. The current frontend records this setting but falls back to the placeholder adapter until a 3D renderer or sidecar is implemented.
+
+Future 3D implementation should keep the same adapter boundary:
+1. Add a renderer case in `createAvatarAdapter()` for `digital_human`.
+2. Load the selected model path through a Three.js/VRM runtime or a sidecar process.
+3. Consume `companion-avatar-event` for expression, motion, speaking, look-at, and idle state.
+4. Keep model inference and global state in Hestia; the 3D renderer is display-only.
 
 When adding a new model type:
 1. Add a case in `createAvatarAdapter()`

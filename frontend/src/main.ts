@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
@@ -219,6 +219,20 @@ interface AvatarAdapter {
   onEvent?(type: CompanionAvatarEventType, data?: CompanionAvatarEventPayload): void;
 }
 
+function isLocalFilesystemPath(path: string): boolean {
+  return path.startsWith("/") || /^[A-Za-z]:[\\/]/.test(path);
+}
+
+function avatarResourceUrl(path: string): string {
+  if (/^(https?:|asset:|file:)/.test(path)) {
+    return path;
+  }
+  if (isLocalFilesystemPath(path)) {
+    return convertFileSrc(path);
+  }
+  return `/${path.replace(/^\/+/, "")}`;
+}
+
 function createPlaceholderAvatarAdapter(imagePath: string): AvatarAdapter {
   let container: HTMLElement | null = null;
   let image: HTMLImageElement | null = null;
@@ -230,7 +244,7 @@ function createPlaceholderAvatarAdapter(imagePath: string): AvatarAdapter {
     type: "placeholder",
     mount(mountPoint: HTMLElement) {
       container = mountPoint;
-      image = el("img", { src: `/${imagePath}`, alt: "Hestia companion", draggable: "false" }) as HTMLImageElement;
+      image = el("img", { src: avatarResourceUrl(imagePath), alt: "Hestia companion", draggable: "false" }) as HTMLImageElement;
       mountPoint.append(image);
       container.dataset.avatarAdapter = "placeholder";
       setState("idle");
@@ -416,7 +430,7 @@ function createLive2DAvatarAdapter(modelPath: string): AvatarAdapter {
       app.view.classList.add("live2d-canvas");
       mountPoint.append(app.view);
 
-      model = await Live2DModel.from(`/${modelPath}`, {
+      model = await Live2DModel.from(avatarResourceUrl(modelPath), {
         autoInteract: false,
         motionPreload: MotionPreloadStrategy.IDLE,
       });
@@ -481,7 +495,10 @@ function createAvatarAdapter(modelType: string, imagePath: string): AvatarAdapte
   if (modelType === "live2d" && imagePath.endsWith(".model3.json")) {
     return createLive2DAvatarAdapter(imagePath);
   }
-  return createPlaceholderAvatarAdapter(imagePath || "companion-cat-placeholder.png");
+  if (modelType === "placeholder") {
+    return createPlaceholderAvatarAdapter(imagePath || "companion-cat-placeholder.png");
+  }
+  return createPlaceholderAvatarAdapter("companion-cat-placeholder.png");
 }
 
 function option(value: string, label: string, selectedValue: string): HTMLOptionElement {
@@ -653,6 +670,27 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   const baseUrlInput = el("input", { type: "text", value: cfg.remote_api.base_url }) as HTMLInputElement;
   const modelInput = el("input", { type: "text", value: cfg.remote_api.model }) as HTMLInputElement;
 
+  const avatarEnabled = el("input", { type: "checkbox" }) as HTMLInputElement;
+  avatarEnabled.checked = cfg.app.avatar.enabled;
+  const avatarType = el("select") as HTMLSelectElement;
+  [
+    ["placeholder", "Image"],
+    ["live2d", "Live2D"],
+    ["digital_human", "3D (future)"],
+  ].forEach(([value, label]) => {
+    avatarType.append(option(value, label, cfg.app.avatar.model_type));
+  });
+  const avatarPath = el("input", {
+    type: "text",
+    value: cfg.app.avatar.image_path || "",
+    placeholder: "companion-cat-placeholder.png",
+  }) as HTMLInputElement;
+  const avatarHint = el(
+    "span",
+    { class: "hint" },
+    "Image uses a raster file. Live2D uses a .model3.json file. 3D is reserved for future VRM/GLB sidecars.",
+  );
+
   const backendSelect = el("select") as HTMLSelectElement;
   const backendLabels: Record<string, string> = {
     llama_cpp: "llama.cpp",
@@ -814,6 +852,32 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     }
   });
 
+  const browseAvatar = el("button", { class: "btn btn-secondary", type: "button" }, "Browse") as HTMLButtonElement;
+  browseAvatar.addEventListener("click", async () => {
+    const filters =
+      avatarType.value === "live2d"
+        ? [{ name: "Live2D Model", extensions: ["json"] }]
+        : avatarType.value === "digital_human"
+          ? [{ name: "3D Model", extensions: ["vrm", "glb", "gltf"] }]
+          : [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }];
+    const selected = await open({ multiple: false, filters });
+    if (selected && typeof selected === "string") {
+      avatarPath.value = selected;
+    }
+  });
+  avatarType.addEventListener("change", () => {
+    if (avatarType.value === "live2d") {
+      avatarPath.placeholder = "Path to model3.json";
+      avatarHint.textContent = "Select a local .model3.json file or use a public-relative path. Related textures/motions must remain beside it.";
+    } else if (avatarType.value === "digital_human") {
+      avatarPath.placeholder = "Path to .vrm, .glb, or .gltf";
+      avatarHint.textContent = "3D model selection is stored now; rendering requires a future VRM/GLB sidecar adapter.";
+    } else {
+      avatarPath.placeholder = "companion-cat-placeholder.png";
+      avatarHint.textContent = "Select an image file or use a public-relative path.";
+    }
+  });
+
   const browseComfyRoot = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
   browseComfyRoot.addEventListener("click", async () => {
     const selected = await open({ multiple: false, directory: true });
@@ -853,7 +917,11 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     const localUrl = localUrlInput.value.trim();
     const loadCommand = loadCmdInput.value.trim();
     const unloadCommand = unloadCmdInput.value.trim();
+    const avatarPathValue = avatarPath.value.trim();
 
+    if (avatarEnabled.checked !== cfg.app.avatar.enabled) updates.avatar_enabled = avatarEnabled.checked;
+    if (avatarType.value !== cfg.app.avatar.model_type) updates.avatar_model_type = avatarType.value;
+    if (avatarPathValue !== cfg.app.avatar.image_path) updates.avatar_image_path = avatarPathValue;
     if (apiKey) updates.api_key = apiKey;
     if (baseUrlInput.value !== cfg.remote_api.base_url) updates.base_url = baseUrlInput.value;
     if (modelInput.value !== cfg.remote_api.model) updates.model = modelInput.value;
@@ -936,6 +1004,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   });
 
   const modelControls = el("div", { class: "inline-controls" }, localModelInput, browseBtn, scanBtn);
+  const avatarPathControls = el("div", { class: "inline-controls two" }, avatarPath, browseAvatar);
   const comfyRootControls = el("div", { class: "inline-controls two" }, comfyRootDir, browseComfyRoot);
   const comfyPythonControls = el("div", { class: "inline-controls two" }, comfyPython, browseComfyPython);
   const comfyWorkflowControls = el("div", { class: "inline-controls two" }, comfyWorkflow, browseWorkflow);
@@ -944,6 +1013,15 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   panel.append(
     el("h2", {}, "Settings"),
     status,
+    el(
+      "div",
+      { class: "settings-section" },
+      el("h3", {}, "Avatar"),
+      fieldRow("Enable", avatarEnabled),
+      fieldRow("Type", avatarType),
+      fieldRow("Content", avatarPathControls),
+      avatarHint,
+    ),
     el(
       "div",
       { class: "settings-section" },

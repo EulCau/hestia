@@ -560,6 +560,15 @@ pub fn update_user_config(updates: serde_json::Value) -> Result<(), Box<dyn std:
         if let Some(v) = updates.get("theme_mode") {
             upsert("app.theme", "mode", v);
         }
+        if let Some(v) = updates.get("avatar_enabled") {
+            upsert("app.avatar", "enabled", v);
+        }
+        if let Some(v) = updates.get("avatar_image_path") {
+            upsert("app.avatar", "image_path", v);
+        }
+        if let Some(v) = updates.get("avatar_model_type") {
+            upsert("app.avatar", "model_type", v);
+        }
         if let Some(v) = updates.get("api_key") {
             upsert("remote_api", "api_key", v);
         }
