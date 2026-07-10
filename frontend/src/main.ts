@@ -1532,6 +1532,102 @@ function buildImageTestPanel(): HTMLElement {
   return overlay;
 }
 
+const LOCAL_LLM_ONBOARDING_KEY = "hestia.localLlmOnboarding.v1";
+
+function buildLocalLlmOnboarding(cfg: ConfigSnapshot, onDone: () => void): HTMLElement {
+  const overlay = el("div", { class: "settings-overlay" });
+  const panel = el("section", { class: "settings-panel onboarding-panel", role: "dialog", "aria-modal": "true" });
+  const status = el("div", { class: "settings-status", style: "display:none" });
+  const backendSelect = el("select") as HTMLSelectElement;
+  const backendLabels: Record<string, string> = {
+    llama_cpp: "llama.cpp",
+    ollama: "Ollama",
+    vllm: "vLLM",
+  };
+  ["llama_cpp", "ollama", "vllm"].forEach((value) => {
+    backendSelect.append(option(value, backendLabels[value] ?? value, cfg.local_llm.backend));
+  });
+  const baseUrlInput = el("input", {
+    type: "text",
+    value: cfg.local_llm.base_url || "http://127.0.0.1:8080",
+    placeholder: "http://127.0.0.1:8080",
+  }) as HTMLInputElement;
+  const modelsDirInput = el("input", {
+    type: "text",
+    value: cfg.local_llm.models_dir || "~/models",
+    placeholder: "~/models",
+  }) as HTMLInputElement;
+  const modelInput = el("input", {
+    type: "text",
+    value: cfg.local_llm.model || "",
+    placeholder: "qwen3-8b or path/to/model.gguf",
+  }) as HTMLInputElement;
+  const autoLoad = el("input", { type: "checkbox" }) as HTMLInputElement;
+  autoLoad.checked = cfg.local_llm.auto_load;
+  const browseModelsDir = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
+  const browseModel = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
+  const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, "Save");
+  const skipBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Skip");
+
+  backendSelect.addEventListener("change", () => {
+    if (backendSelect.value === "llama_cpp") baseUrlInput.value = "http://127.0.0.1:8080";
+    if (backendSelect.value === "ollama") baseUrlInput.value = "http://127.0.0.1:11434";
+    if (backendSelect.value === "vllm") baseUrlInput.value = "http://127.0.0.1:8000";
+  });
+  browseModelsDir.addEventListener("click", async () => {
+    const selected = await open({ multiple: false, directory: true });
+    if (selected && typeof selected === "string") modelsDirInput.value = selected;
+  });
+  browseModel.addEventListener("click", async () => {
+    const selected = await open({ multiple: false, filters: [{ name: "Models", extensions: ["gguf", "bin", "safetensors"] }] });
+    if (selected && typeof selected === "string") modelInput.value = selected;
+  });
+  skipBtn.addEventListener("click", () => {
+    localStorage.setItem(LOCAL_LLM_ONBOARDING_KEY, "skipped");
+    overlay.remove();
+  });
+  saveBtn.addEventListener("click", async () => {
+    saveBtn.setAttribute("disabled", "true");
+    try {
+      await invoke("update_settings", {
+        updates: {
+          local_llm_backend: backendSelect.value,
+          local_llm_base_url: baseUrlInput.value.trim(),
+          local_llm_models_dir: modelsDirInput.value.trim(),
+          local_llm_model: modelInput.value.trim(),
+          local_llm_enabled: true,
+          local_llm_auto_load: autoLoad.checked,
+          persona_rewrite_enabled: false,
+        },
+      });
+      localStorage.setItem(LOCAL_LLM_ONBOARDING_KEY, "configured");
+      overlay.remove();
+      onDone();
+    } catch (error) {
+      setStatus(status, false, String(error));
+    } finally {
+      saveBtn.removeAttribute("disabled");
+    }
+  });
+
+  panel.append(
+    el("h2", {}, "Local LLM Setup"),
+    status,
+    el(
+      "div",
+      { class: "settings-section" },
+      fieldRow("Backend", backendSelect),
+      fieldRow("Base URL", baseUrlInput),
+      fieldRow("Models dir", el("div", { class: "inline-controls two" }, modelsDirInput, browseModelsDir)),
+      fieldRow("Model", el("div", { class: "inline-controls two" }, modelInput, browseModel)),
+      fieldRow("Auto-load", autoLoad),
+    ),
+    el("div", { class: "settings-actions" }, skipBtn, saveBtn),
+  );
+  overlay.append(panel);
+  return overlay;
+}
+
 function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLElement {
   const overlay = el("div", { class: "settings-overlay" });
   const panel = el("section", { class: "settings-panel", role: "dialog", "aria-modal": "true" });
@@ -1621,8 +1717,6 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   llmToggle.checked = cfg.local_llm.enabled;
   const autoLoadToggle = el("input", { type: "checkbox" }) as HTMLInputElement;
   autoLoadToggle.checked = cfg.local_llm.auto_load;
-  const rewriteToggle = el("input", { type: "checkbox" }) as HTMLInputElement;
-  rewriteToggle.checked = cfg.persona_rewrite.enabled;
   const localModelInput = el("input", {
     type: "text",
     value: cfg.local_llm.model || "",
@@ -1882,9 +1976,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     if (localModel !== cfg.local_llm.model) updates.local_llm_model = localModel;
     if (llmToggle.checked !== cfg.local_llm.enabled) updates.local_llm_enabled = llmToggle.checked;
     if (autoLoadToggle.checked !== cfg.local_llm.auto_load) updates.local_llm_auto_load = autoLoadToggle.checked;
-    if (rewriteToggle.checked !== cfg.persona_rewrite.enabled) {
-      updates.persona_rewrite_enabled = rewriteToggle.checked;
-    }
+    if (cfg.persona_rewrite.enabled) updates.persona_rewrite_enabled = false;
     if (loadCommand !== (cfg.local_llm.load_command || "")) updates.local_llm_load_command = loadCommand;
     if (unloadCommand !== (cfg.local_llm.unload_command || "")) updates.local_llm_unload_command = unloadCommand;
     if (comfyEnabled.checked !== cfg.multimodal.comfyui.enabled) updates.comfyui_enabled = comfyEnabled.checked;
@@ -1998,7 +2090,6 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
       fieldRow("Base URL", localUrlInput),
       fieldRow("Enable", llmToggle),
       fieldRow("Auto-load", autoLoadToggle, "Starts the inference server on app launch when supported."),
-      fieldRow("Rewrite", rewriteToggle, "Restyles remote responses through the local model."),
       fieldRow("Model", modelControls, "Use manufacturer/model_name for discovered GGUF files."),
       modelHint,
       fieldRow("Load command", loadCmdInput, "Placeholders: {model_path}, {port}, {host}."),
@@ -2215,11 +2306,6 @@ async function buildApp() {
       statusLine("Remote API", cfg.remote_api.has_api_key, cfg.remote_api.has_api_key ? "ready" : "missing key"),
       statusLine("Local LLM", cfg.local_llm.available, cfg.local_llm.available ? cfg.local_llm.backend : "off"),
       statusLine(
-        "Rewrite",
-        cfg.persona_rewrite.enabled && cfg.local_llm.available,
-        cfg.persona_rewrite.enabled ? "enabled" : "off",
-      ),
-      statusLine(
         "ComfyUI",
         cfg.multimodal.comfyui.available,
         cfg.multimodal.comfyui.available
@@ -2305,6 +2391,14 @@ async function buildApp() {
       }),
     );
   }).catch(() => {});
+
+  if (!localStorage.getItem(LOCAL_LLM_ONBOARDING_KEY)) {
+    document.body.append(
+      buildLocalLlmOnboarding(cfg, () => {
+        void buildApp();
+      }),
+    );
+  }
 }
 
 async function buildCompanionView() {

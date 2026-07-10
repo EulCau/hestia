@@ -38,16 +38,16 @@
 - [x] **Avatar adapter interface**: `mount(container)`, `unmount()`, `onEvent?()` — forward-compatible with Live2D/digital human
 - [x] **Session context**: `chatHistory` array maintained in frontend, passed to backend on each message
 
-### Phase 3 — Local Personality Rewrite
+### Phase 3 — Local Personality Rewrite (Suspended)
 - [x] **LocalLlmWorker** (`workers/local_llm.rs`): HTTP client for llama.cpp/vLLM OpenAI-compatible servers
 - [x] **PersonaRewriter** (`personality/mod.rs`): builds rewrite prompt from template with `{tone}`, `{style_rules}`, `{content}`
-- [x] **Rewrite pipeline in send_chat_message**: DeepSeek → (if enabled) PersonaRewriter → LocalLlmWorker → final response
+- [x] **Rewrite pipeline in send_chat_message**: implemented but currently disabled; active role style is handled in the remote prompt
 - [x] **Degradation**: if rewrite fails, returns raw DeepSeek response (non-blocking)
 - [x] **Backend selector**: UI dropdown for llama.cpp vs vLLM
 - [x] **Role manager**: modal/form UI with load/save/generate, validates against `PersonaConfig` schema
 - [x] **Qwen3 thinking mode handling**: `reasoning_content` fallback when `content` is empty
 - [x] **max_tokens**: 2048 default for rewrite to accommodate thinking mode
-- [x] **Rewrite status indicators**: sidebar shows `LLM: On/Off | Rewrite: On/Off`, rewritten messages have purple left border
+- [x] **Local LLM setup**: settings and first-run setup collect backend, URL, model directory, and model
 
 ### Phase 4 — GPU Resource Manager / Model Auto-Load
 - [x] **Model discovery** (`workers/model_loader.rs`): scans configured `models_dir` for `.gguf` files
@@ -113,7 +113,7 @@ All commands are registered in `src/lib.rs` invoke_handler. The frontend calls t
 
 | Command | Args | Returns | Notes |
 |---|---|---|---|
-| `update_settings` | `updates: object` | `string` "ok" | Writes `config/user.toml`. Recognized keys include theme, remote API, local LLM backend/model/auto-load/commands, and persona rewrite toggles |
+| `update_settings` | `updates: object` | `string` "ok" | Writes `config/user.toml`. Recognized keys include theme, remote API, local LLM backend/model/auto-load/commands, and legacy persona rewrite keys |
 | `save_persona_content` | `profile: string, content: string` | `string` "ok" | Validates JSON against PersonaConfig schema before writing `usr/roles/{profile}.json` |
 | `role_storage_paths` | `profile: string` | `string` (JSON: `{role, assets, memory}`) | Displays editable role, asset, and memory paths |
 | `prepare_role_avatar_content` | `profile: string, path: string, modelType: string` | `string` path | Copies image, Live2D, or future 3D avatar content into `usr/roles/{profile}/avatar/` |
@@ -346,7 +346,7 @@ cd /home/eulcau/CXTX/hestia
 ./frontend/node_modules/.bin/tauri dev
 ```
 
-Then in Settings UI: enable Local LLM + Enable rewrite → Save → Restart
+Then in Settings UI or first-run Local LLM setup: enable Local LLM and configure backend/model. Persona rewrite is currently disabled.
 
 ### If Wayland/GBM errors
 ```bash
@@ -374,7 +374,7 @@ Or via env var: `export DEEPSEEK_API_KEY=sk-...`
 ### Remote Role Prompting
 - **Current behavior**: `PromptAssembler` injects base rules, active role fields, and relevant active-role memories into the chat prompt.
 - **Design constraint**: Role JSON contains character traits only. Global rules such as punctuation policy, parenthetical action syntax, memory conflict priority, and safety/factual priority stay in `PromptAssembler`.
-- **Rewrite path**: If persona rewrite is enabled, the local rewrite prompt also uses active role fields, but failure degrades to the remote response.
+- **Rewrite path**: Persona rewrite is currently disabled. Active role style is handled by the remote prompt.
 
 ### Wayland GBM Buffer Errors
 - **Problem**: WebKitGTK on KDE Plasma + Wayland fails to create GBM buffers.

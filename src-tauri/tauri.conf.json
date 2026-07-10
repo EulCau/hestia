@@ -16,7 +16,7 @@
         "label": "main",
         "title": "Hestia",
         "width": 900,
-        "height": 700,
+        "height": 780,
         "resizable": true,
         "decorations": true
       }

@@ -96,6 +96,18 @@ textarea {
   font: inherit;
 }
 
+input,
+select,
+textarea {
+  background: var(--bg-input);
+  color: var(--input-text);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+}
+
 button {
   user-select: none;
 }
@@ -107,6 +119,7 @@ button {
   width: 100%;
   min-width: 0;
   background: var(--bg-chat);
+  overflow: hidden;
 }
 
 .sidebar {
@@ -116,6 +129,10 @@ button {
   padding: 18px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
+  min-height: 0;
+  max-height: 100vh;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .avatar-container {

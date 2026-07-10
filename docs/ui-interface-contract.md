@@ -228,11 +228,7 @@ Async:    YES. This is the primary long-running operation.
             4. If should_generate=false or routing fails, PromptAssembler loads active role JSON
             5. Memory retrieval loads pinned/relevant memories and injects a bounded context message
             6. RemoteApiWorker.infer() → HTTP POST to DeepSeek
-            7. [if rewrite enabled] checks local_llm_available
-            8. [if rewrite enabled] PersonaRewriter builds prompt
-            9. [if rewrite enabled] acquires ResourceManager local model slot
-            10. [if rewrite enabled] LocalLlmWorker.infer() → HTTP POST to llama.cpp
-            11. [if rewrite enabled] releases ResourceManager local model slot
+            7. Returns the remote response directly. Local persona rewrite is currently disabled.
             12. Returns final JSON string
 UI State:
   BEFORE:  disable textarea and send/image buttons, show "Thinking..." or "Generating image..."
@@ -987,11 +983,13 @@ Both backends use OpenAI-compatible `/v1/chat/completions`. The `LocalLlmWorker`
 
 ### 8.3 UI Control
 
-The Settings panel "Persona Rewrite" section now includes a **Backend** dropdown with options:
+The Settings panel Local LLM section includes a **Backend** dropdown with options:
 - `llama.cpp (localhost:8080)`
 - `vLLM (localhost:8000)`
 
-Selecting a backend and saving writes `local_llm.backend` to `config/user.toml`. The `base_url` is not automatically changed — the user configures both independently.
+Selecting a backend and saving writes `local_llm.backend` to `config/user.toml`. The frontend also provides a first-run Local LLM setup dialog with backend, base URL, model directory, model, auto-load, and skip controls.
+
+Persona rewrite is currently disabled in the chat pipeline and no longer exposed as a checkbox. The `persona_rewrite_enabled` update key remains supported only for compatibility with older user config.
 
 ### 8.4 update_settings Key
 
@@ -1153,7 +1151,7 @@ Phase 4 uses a coarse local model resource policy:
 | Slot occupied | Scheduler transitions job to `WaitingResource` |
 | Wait exceeds `job.timeout_ms` | Job transitions to `Timeout` |
 
-The persona rewrite path also uses the same resource slot before calling `LocalLlmWorker.infer()`. This prevents concurrent chat requests from sending overlapping rewrite jobs to the local LLM.
+Persona rewrite is currently disabled. If it is re-enabled later, it must use the same resource slot before calling `LocalLlmWorker.infer()` so concurrent chat requests do not send overlapping rewrite jobs to the local LLM.
 
 When `[observability] vram_logs = true`, acquire, busy, and release events are emitted through `tracing`.
 
@@ -1165,7 +1163,7 @@ Startup behavior:
 - With `auto_load = true`, Hestia waits up to 20 seconds for health.
 - With `auto_load = false` and `enabled = true`, Hestia checks for up to 2 seconds.
 - `ConfigSnapshot.local_llm.available` is set from this startup health result.
-- If persona rewrite is enabled while local LLM is unavailable, `send_chat_message` returns the raw remote response with `"rewritten": false`.
+- `send_chat_message` currently returns the remote response directly with `"rewritten": false`.
 
 ### 10.7 Arch Linux Package Dependency (Future)
 

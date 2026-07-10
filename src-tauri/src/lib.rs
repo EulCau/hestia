@@ -1518,8 +1518,9 @@ async fn send_chat_message(
         }
     }
 
-    // Step 2: Optionally rewrite through local personality layer
-    if cfg.persona_rewrite.enabled {
+    // Local persona rewrite is intentionally disabled for now. The remote prompt
+    // owns the active role style directly.
+    if false && cfg.persona_rewrite.enabled {
         if !state.local_llm_available {
             warn!("persona rewrite enabled but local LLM is not available");
             remember_interaction(&role_id, &message, &raw_content, "chat");
