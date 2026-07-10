@@ -39,6 +39,7 @@ models/*
 third_party/
 frontend/public/avatar/
 frontend/public/live2d/
+frontend/public/role-avatar/
 *.can3
 *.cmo3
 *.safetensors

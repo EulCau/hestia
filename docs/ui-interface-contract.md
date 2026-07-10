@@ -118,6 +118,10 @@ Usage:
   - live2d: accepts a directory or `.model3.json`, copies the runtime directory to
     `usr/roles/{profile}/avatar/live2d/`, and returns the copied `.model3.json` path
   - digital_human: copies `.vrm`, `.glb`, or `.gltf` to `usr/roles/{profile}/avatar/avatar.<ext>`
+  Development rendering cache:
+  - the same files are copied under ignored `frontend/public/role-avatar/{profile}/`
+  - the returned path is public-relative so role activation hot-swaps the avatar without
+    requiring the user to reselect the same content in Settings
 ```
 Arguments: none
 Returns:  string (JSON)

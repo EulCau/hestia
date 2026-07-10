@@ -95,7 +95,13 @@ Selected avatar files are copied under:
 usr/roles/{role_id}/avatar/
 ```
 
-This keeps each role self-contained. The role JSON stores the copied path, not the original source path. Deleting a user-created role also removes its copied avatar directory.
+This keeps each role self-contained. In development, the same files are also copied to an ignored runtime cache:
+
+```text
+frontend/public/role-avatar/{role_id}/
+```
+
+The role JSON stores the public runtime path so the WebView can render the asset immediately. Deleting a user-created role also removes its copied avatar directory and runtime cache.
 
 ---
 

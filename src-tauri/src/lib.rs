@@ -382,6 +382,17 @@ fn delete_role(
         return Err(format!("confirmation must exactly be: {expected}"));
     }
     personality::delete_persona(&profile).map_err(|e| format!("failed to delete role: {}", e))?;
+    let public_assets =
+        resolve_project_path("frontend/public/role-avatar").join(sanitize_asset_id(&profile));
+    if public_assets.exists() {
+        std::fs::remove_dir_all(&public_assets).map_err(|e| {
+            format!(
+                "failed to delete role avatar cache {}: {}",
+                public_assets.display(),
+                e
+            )
+        })?;
+    }
     if current_role_id(&state) == profile {
         config::update_user_config(serde_json::json!({ "personality_default_profile": "default" }))
             .map_err(|e| format!("failed to reset active role: {}", e))?;
@@ -976,6 +987,18 @@ fn copy_file_to_dir(
     Ok(target)
 }
 
+fn sanitize_asset_id(value: &str) -> String {
+    let sanitized: String = value
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '-')
+        .collect();
+    if sanitized.is_empty() {
+        "default".into()
+    } else {
+        sanitized
+    }
+}
+
 #[tauri::command]
 fn prepare_avatar_content(path: String, model_type: String) -> Result<String, String> {
     let source = resolve_project_path(path.trim());
@@ -1051,6 +1074,8 @@ fn prepare_role_avatar_content(
     }
     let source = resolve_project_path(path.trim());
     let asset_dir = personality::role_asset_dir(profile);
+    let public_id = sanitize_asset_id(profile);
+    let public_asset_dir = resolve_project_path("frontend/public/role-avatar").join(&public_id);
 
     if model_type == "live2d" {
         let model_path = find_model3_json(&source)?;
@@ -1068,13 +1093,20 @@ fn prepare_role_avatar_content(
                 .map_err(|e| format!("failed to clear {}: {}", target.display(), e))?;
         }
         copy_dir_recursive(&root, &target)?;
+        let public_target = public_asset_dir.join("live2d");
+        if public_target.exists() {
+            std::fs::remove_dir_all(&public_target)
+                .map_err(|e| format!("failed to clear {}: {}", public_target.display(), e))?;
+        }
+        copy_dir_recursive(&root, &public_target)?;
         let model_relative_to_root = model_path
             .strip_prefix(&root)
             .map_err(|_| "failed to resolve Live2D model path".to_string())?;
-        return Ok(target
-            .join(model_relative_to_root)
-            .to_string_lossy()
-            .replace('\\', "/"));
+        return Ok(format!(
+            "role-avatar/{}/live2d/{}",
+            public_id,
+            model_relative_to_root.to_string_lossy().replace('\\', "/")
+        ));
     }
 
     if model_type == "placeholder" {
@@ -1090,8 +1122,10 @@ fn prepare_role_avatar_content(
         if !allowed.contains(&extension.as_str()) {
             return Err("image avatar must be png, jpg, jpeg, webp, or gif".into());
         }
-        let target = copy_file_to_dir(&source, &asset_dir, &format!("avatar.{extension}"))?;
-        return Ok(target.to_string_lossy().replace('\\', "/"));
+        let target_name = format!("avatar.{extension}");
+        copy_file_to_dir(&source, &asset_dir, &target_name)?;
+        copy_file_to_dir(&source, &public_asset_dir, &target_name)?;
+        return Ok(format!("role-avatar/{public_id}/{target_name}"));
     }
 
     if model_type == "digital_human" {
@@ -1107,8 +1141,10 @@ fn prepare_role_avatar_content(
         if !allowed.contains(&extension.as_str()) {
             return Err("3D avatar must be vrm, glb, or gltf".into());
         }
-        let target = copy_file_to_dir(&source, &asset_dir, &format!("avatar.{extension}"))?;
-        return Ok(target.to_string_lossy().replace('\\', "/"));
+        let target_name = format!("avatar.{extension}");
+        copy_file_to_dir(&source, &asset_dir, &target_name)?;
+        copy_file_to_dir(&source, &public_asset_dir, &target_name)?;
+        return Ok(format!("role-avatar/{public_id}/{target_name}"));
     }
 
     Err(format!("unsupported role avatar type: {model_type}"))

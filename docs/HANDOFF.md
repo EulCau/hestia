@@ -116,7 +116,7 @@ All commands are registered in `src/lib.rs` invoke_handler. The frontend calls t
 | `update_settings` | `updates: object` | `string` "ok" | Writes `config/user.toml`. Recognized keys include theme, remote API, local LLM backend/model/auto-load/commands, and legacy persona rewrite keys |
 | `save_persona_content` | `profile: string, content: string` | `string` "ok" | Validates JSON against PersonaConfig schema before writing `usr/roles/{profile}.json` |
 | `role_storage_paths` | `profile: string` | `string` (JSON: `{role, assets, memory}`) | Displays editable role, asset, and memory paths |
-| `prepare_role_avatar_content` | `profile: string, path: string, modelType: string` | `string` path | Copies image, Live2D, or future 3D avatar content into `usr/roles/{profile}/avatar/` |
+| `prepare_role_avatar_content` | `profile: string, path: string, modelType: string` | `string` path | Copies role avatar content into `usr/roles/{profile}/avatar/` and ignored `frontend/public/role-avatar/{profile}/` runtime cache |
 | `set_active_role` | `profile: string` | `string` (JSON: `{active_role}`) | Writes `[personality] default_profile` and applies role avatar if configured |
 | `delete_role` | `profile: string, confirmation: string` | `string` "ok" | Requires exact `我确认删除{profile}`; cannot delete `default` |
 | `generate_role_profile` | `seed: RoleGenerationSeed` | `string` (raw JSON) | Uses configured remote chat API to generate a role JSON draft |
