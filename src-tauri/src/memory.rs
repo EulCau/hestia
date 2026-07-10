@@ -38,10 +38,30 @@ fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
-fn memory_path() -> PathBuf {
+fn sanitize_role_id(role_id: &str) -> String {
+    let value: String = role_id
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '-')
+        .collect();
+    if value.trim().is_empty() {
+        "default".into()
+    } else {
+        value
+    }
+}
+
+fn legacy_memory_path() -> PathBuf {
     project_root()
         .join("usr")
         .join("memory")
+        .join("memories.json")
+}
+
+fn memory_path(role_id: &str) -> PathBuf {
+    project_root()
+        .join("usr")
+        .join("memory")
+        .join(sanitize_role_id(role_id))
         .join("memories.json")
 }
 
@@ -67,8 +87,15 @@ fn clamp_confidence(value: f64) -> f64 {
     }
 }
 
-pub fn load_memories() -> Result<Vec<MemoryItem>, Box<dyn std::error::Error>> {
-    let path = memory_path();
+pub fn load_memories(role_id: &str) -> Result<Vec<MemoryItem>, Box<dyn std::error::Error>> {
+    let path = memory_path(role_id);
+    let path = if path.exists() {
+        path
+    } else if role_id == "default" && legacy_memory_path().exists() {
+        legacy_memory_path()
+    } else {
+        path
+    };
     if !path.exists() {
         return Ok(Vec::new());
     }
@@ -79,8 +106,11 @@ pub fn load_memories() -> Result<Vec<MemoryItem>, Box<dyn std::error::Error>> {
     Ok(serde_json::from_str(&content)?)
 }
 
-pub fn save_memories(memories: &[MemoryItem]) -> Result<(), Box<dyn std::error::Error>> {
-    let path = memory_path();
+pub fn save_memories(
+    role_id: &str,
+    memories: &[MemoryItem],
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = memory_path(role_id);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -90,10 +120,11 @@ pub fn save_memories(memories: &[MemoryItem]) -> Result<(), Box<dyn std::error::
 }
 
 pub fn list_memories(
+    role_id: &str,
     query: Option<&str>,
     include_archived: bool,
 ) -> Result<Vec<MemoryItem>, Box<dyn std::error::Error>> {
-    let mut memories = load_memories()?;
+    let mut memories = load_memories(role_id)?;
     if !include_archived {
         memories.retain(|memory| !memory.archived);
     }
@@ -115,6 +146,7 @@ pub fn list_memories(
 }
 
 pub fn create_memory(
+    role_id: &str,
     kind: String,
     content: String,
     source: Option<String>,
@@ -137,18 +169,19 @@ pub fn create_memory(
         pinned: pinned.unwrap_or(false),
         archived: false,
     };
-    let mut memories = load_memories()?;
+    let mut memories = load_memories(role_id)?;
     memories.push(item.clone());
-    save_memories(&memories)?;
+    save_memories(role_id, &memories)?;
     info!(memory_id = %item.id, "memory created");
     Ok(item)
 }
 
 pub fn update_memory(
+    role_id: &str,
     id: String,
     patch: MemoryPatch,
 ) -> Result<MemoryItem, Box<dyn std::error::Error>> {
-    let mut memories = load_memories()?;
+    let mut memories = load_memories(role_id)?;
     let now = now_ms();
     let index = memories
         .iter()
@@ -179,19 +212,19 @@ pub fn update_memory(
     }
     memory.updated_at = now;
     let item = memory.clone();
-    save_memories(&memories)?;
+    save_memories(role_id, &memories)?;
     info!(memory_id = %item.id, "memory updated");
     Ok(item)
 }
 
-pub fn delete_memory(id: String) -> Result<(), Box<dyn std::error::Error>> {
-    let mut memories = load_memories()?;
+pub fn delete_memory(role_id: &str, id: String) -> Result<(), Box<dyn std::error::Error>> {
+    let mut memories = load_memories(role_id)?;
     let before = memories.len();
     memories.retain(|memory| memory.id != id);
     if memories.len() == before {
         return Err(format!("memory not found: {id}").into());
     }
-    save_memories(&memories)?;
+    save_memories(role_id, &memories)?;
     info!(memory_id = %id, "memory deleted");
     Ok(())
 }
@@ -215,13 +248,14 @@ fn keyword_score(memory: &MemoryItem, query: &str) -> usize {
 }
 
 pub fn relevant_memories(
+    role_id: &str,
     query: &str,
     limit: usize,
 ) -> Result<Vec<MemoryItem>, Box<dyn std::error::Error>> {
     if limit == 0 {
         return Ok(Vec::new());
     }
-    let mut scored: Vec<(usize, MemoryItem)> = load_memories()?
+    let mut scored: Vec<(usize, MemoryItem)> = load_memories(role_id)?
         .into_iter()
         .filter(|memory| !memory.archived)
         .map(|memory| (keyword_score(&memory, query), memory))
@@ -239,26 +273,27 @@ pub fn relevant_memories(
         .map(|(_, memory)| memory)
         .collect();
     if !selected.is_empty() {
-        mark_memories_used(selected.iter().map(|memory| memory.id.as_str()))?;
+        mark_memories_used(role_id, selected.iter().map(|memory| memory.id.as_str()))?;
     }
     Ok(selected)
 }
 
 fn mark_memories_used<'a>(
+    role_id: &str,
     ids: impl Iterator<Item = &'a str>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let ids: Vec<&str> = ids.collect();
     if ids.is_empty() {
         return Ok(());
     }
-    let mut memories = load_memories()?;
+    let mut memories = load_memories(role_id)?;
     let now = now_ms();
     for memory in &mut memories {
         if ids.iter().any(|id| *id == memory.id) {
             memory.last_used_at = Some(now);
         }
     }
-    save_memories(&memories)?;
+    save_memories(role_id, &memories)?;
     Ok(())
 }
 
@@ -278,4 +313,8 @@ pub fn format_memory_context(memories: &[MemoryItem]) -> Option<String> {
         ));
     }
     Some(lines.join("\n"))
+}
+
+pub fn memory_storage_path(role_id: &str) -> String {
+    memory_path(role_id).display().to_string()
 }

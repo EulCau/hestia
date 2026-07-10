@@ -642,6 +642,10 @@ button {
   width: min(760px, 100%);
 }
 
+.role-panel {
+  width: min(820px, 100%);
+}
+
 .persona-editor {
   min-height: 340px;
   margin-bottom: 16px;
@@ -649,6 +653,23 @@ button {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.55;
+}
+
+.role-editor {
+  width: 100%;
+  min-height: 78px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--input-text);
+  line-height: 1.45;
+}
+
+.role-editor:focus {
+  border-color: var(--border-focus);
 }
 
 .memory-editor {

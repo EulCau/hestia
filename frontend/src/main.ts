@@ -137,6 +137,29 @@ interface MemoryItem {
   archived: boolean;
 }
 
+interface RoleProfile {
+  schema_version: number;
+  id: string;
+  name: string;
+  aliases: string[];
+  identity: string;
+  species: string;
+  appearance: string;
+  personality: string;
+  language_style: string;
+  scenario: string;
+  tone: string;
+  initiative: number;
+  humor: number;
+  verbosity: string;
+  pinned: boolean;
+}
+
+interface RoleStoragePaths {
+  role: string;
+  memory: string;
+}
+
 type CompanionAvatarEventType = "expression" | "motion" | "speak_start" | "speak_stop" | "look_at" | "idle";
 
 interface CompanionAvatarEventPayload {
@@ -968,7 +991,221 @@ function buildPersonaEditor(cfg: ConfigSnapshot): HTMLElement {
   return overlay;
 }
 
-function buildMemoryPanel(): HTMLElement {
+function roleIdFromName(value: string): string {
+  const normalized = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return normalized || `role-${Date.now()}`;
+}
+
+function emptyRole(): RoleProfile {
+  return {
+    schema_version: 2,
+    id: "",
+    name: "",
+    aliases: [],
+    identity: "",
+    species: "",
+    appearance: "",
+    personality: "",
+    language_style: "",
+    scenario: "",
+    tone: "",
+    initiative: 0.3,
+    humor: 0.2,
+    verbosity: "medium",
+    pinned: false,
+  };
+}
+
+function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) => void): HTMLElement {
+  const overlay = el("div", { class: "settings-overlay" });
+  const panel = el("section", { class: "settings-panel role-panel", role: "dialog", "aria-modal": "true" });
+  const status = el("div", { class: "settings-status", style: "display:none" });
+  const roleSelect = el("select") as HTMLSelectElement;
+  const idInput = el("input", { type: "text", placeholder: "role-id" }) as HTMLInputElement;
+  const nameInput = el("input", { type: "text", placeholder: "称呼, e.g. Hestia" }) as HTMLInputElement;
+  const aliasesInput = el("input", { type: "text", placeholder: "Aliases separated by comma" }) as HTMLInputElement;
+  const identityInput = el("input", { type: "text", placeholder: "身份" }) as HTMLInputElement;
+  const speciesInput = el("input", { type: "text", placeholder: "物种" }) as HTMLInputElement;
+  const appearanceInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "形象" }) as HTMLTextAreaElement;
+  const personalityInput = el("textarea", { class: "role-editor", rows: "4", placeholder: "性格" }) as HTMLTextAreaElement;
+  const languageInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "语言习惯" }) as HTMLTextAreaElement;
+  const scenarioInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "使用场景" }) as HTMLTextAreaElement;
+  const toneInput = el("input", { type: "text", placeholder: "总体语气" }) as HTMLInputElement;
+  const pinnedInput = el("input", { type: "checkbox" }) as HTMLInputElement;
+  const pathHint = el("div", { class: "artifact-path" });
+  let roles: RoleProfile[] = [];
+
+  const roleFromForm = (): RoleProfile => {
+    const name = nameInput.value.trim();
+    const id = idInput.value.trim() || roleIdFromName(name);
+    return {
+      schema_version: 2,
+      id,
+      name: name || id,
+      aliases: aliasesInput.value
+        .split(",")
+        .map((alias) => alias.trim())
+        .filter(Boolean),
+      identity: identityInput.value.trim(),
+      species: speciesInput.value.trim(),
+      appearance: appearanceInput.value.trim(),
+      personality: personalityInput.value.trim(),
+      language_style: languageInput.value.trim(),
+      scenario: scenarioInput.value.trim(),
+      tone: toneInput.value.trim(),
+      initiative: 0.3,
+      humor: 0.2,
+      verbosity: "medium",
+      pinned: pinnedInput.checked,
+    };
+  };
+
+  const applyRole = async (role: RoleProfile) => {
+    idInput.value = role.id || "";
+    nameInput.value = role.name || "";
+    aliasesInput.value = (role.aliases ?? []).join(", ");
+    identityInput.value = role.identity || "";
+    speciesInput.value = role.species || "";
+    appearanceInput.value = role.appearance || "";
+    personalityInput.value = role.personality || "";
+    languageInput.value = role.language_style || "";
+    scenarioInput.value = role.scenario || "";
+    toneInput.value = role.tone || "";
+    pinnedInput.checked = Boolean(role.pinned);
+    try {
+      const paths = JSON.parse(await invoke<string>("role_storage_paths", { profile: role.id || "default" })) as RoleStoragePaths;
+      pathHint.textContent = `Role: ${paths.role}\nMemory: ${paths.memory}`;
+    } catch {
+      pathHint.textContent = "";
+    }
+  };
+
+  const loadRoles = async (selected = cfg.personality.default_profile) => {
+    try {
+      roles = JSON.parse(await invoke<string>("list_roles")) as RoleProfile[];
+      roleSelect.replaceChildren();
+      roles.forEach((role) => {
+        const label = `${role.pinned ? "* " : ""}${role.name || role.id} (${role.id})`;
+        roleSelect.append(option(role.id, label, selected));
+      });
+      const role = roles.find((item) => item.id === selected) ?? roles[0] ?? emptyRole();
+      roleSelect.value = role.id;
+      await applyRole(role);
+    } catch (error) {
+      setStatus(status, false, String(error));
+    }
+  };
+
+  roleSelect.addEventListener("change", async () => {
+    const role = roles.find((item) => item.id === roleSelect.value);
+    if (role) await applyRole(role);
+  });
+
+  const newBtn = el("button", { class: "btn btn-secondary", type: "button" }, "New");
+  const generateBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Generate");
+  const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("check", 16), "Save");
+  const activateBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Use");
+  const deleteBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Delete");
+  const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Close");
+
+  newBtn.addEventListener("click", () => {
+    void applyRole(emptyRole());
+    setStatus(status, true, "Editing new role.");
+  });
+  generateBtn.addEventListener("click", async () => {
+    generateBtn.setAttribute("disabled", "true");
+    try {
+      const generated = JSON.parse(
+        await invoke<string>("generate_role_profile", {
+          seed: roleFromForm(),
+        }),
+      ) as RoleProfile;
+      await applyRole({ ...emptyRole(), ...generated });
+      setStatus(status, true, "Generated role draft. Review and save it.");
+    } catch (error) {
+      setStatus(status, false, String(error));
+    } finally {
+      generateBtn.removeAttribute("disabled");
+    }
+  });
+  saveBtn.addEventListener("click", async () => {
+    const role = roleFromForm();
+    try {
+      await invoke("save_persona_content", { profile: role.id, content: JSON.stringify(role, null, 2) });
+      await invoke("set_active_role", { profile: role.id });
+      cfg.personality.default_profile = role.id;
+      onRoleChange(role.id);
+      setStatus(status, true, `Saved and activated ${role.name}.`);
+      await loadRoles(role.id);
+    } catch (error) {
+      setStatus(status, false, String(error));
+    }
+  });
+  activateBtn.addEventListener("click", async () => {
+    const role = roleFromForm();
+    try {
+      await invoke("set_active_role", { profile: role.id });
+      cfg.personality.default_profile = role.id;
+      onRoleChange(role.id);
+      setStatus(status, true, `Activated ${role.name || role.id}.`);
+    } catch (error) {
+      setStatus(status, false, String(error));
+    }
+  });
+  deleteBtn.addEventListener("click", async () => {
+    const role = roleFromForm();
+    const expected = `我确认删除${role.id}`;
+    const confirmation = window.prompt(`Type exactly: ${expected}`);
+    if (confirmation === null) return;
+    try {
+      await invoke("delete_role", { profile: role.id, confirmation });
+      if (cfg.personality.default_profile === role.id) {
+        cfg.personality.default_profile = "default";
+        onRoleChange("default");
+      }
+      setStatus(status, true, `Deleted ${role.id}.`);
+      await loadRoles(cfg.personality.default_profile);
+    } catch (error) {
+      setStatus(status, false, String(error));
+    }
+  });
+  closeBtn.addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) overlay.remove();
+  });
+
+  panel.append(
+    el("h2", {}, "Roles"),
+    status,
+    el(
+      "div",
+      { class: "settings-section" },
+      fieldRow("Select", roleSelect),
+      fieldRow("ID", idInput, "Stable config file id. Use lowercase ASCII, digits, '_' or '-'."),
+      fieldRow("Name", nameInput, "This and aliases are treated as references to the role itself."),
+      fieldRow("Aliases", aliasesInput),
+      fieldRow("Identity", identityInput),
+      fieldRow("Species", speciesInput),
+      fieldRow("Appearance", appearanceInput),
+      fieldRow("Personality", personalityInput),
+      fieldRow("Language", languageInput),
+      fieldRow("Scenario", scenarioInput),
+      fieldRow("Tone", toneInput),
+      fieldRow("Pinned", pinnedInput),
+      pathHint,
+      el("div", { class: "settings-actions" }, newBtn, generateBtn, saveBtn, activateBtn, deleteBtn, closeBtn),
+    ),
+  );
+  overlay.append(panel);
+  void loadRoles();
+  return overlay;
+}
+
+function buildMemoryPanel(cfg: ConfigSnapshot): HTMLElement {
   const overlay = el("div", { class: "settings-overlay" });
   const panel = el("section", { class: "settings-panel memory-panel", role: "dialog", "aria-modal": "true" });
   const status = el("div", { class: "settings-status", style: "display:none" });
@@ -986,6 +1223,7 @@ function buildMemoryPanel(): HTMLElement {
     placeholder: "Add a stable fact, preference, project note, or relationship detail.",
   }) as HTMLTextAreaElement;
   const list = el("div", { class: "memory-list" });
+  const pathHint = el("div", { class: "artifact-path" });
   let memories: MemoryItem[] = [];
   let editingId: string | null = null;
 
@@ -1046,6 +1284,8 @@ function buildMemoryPanel(): HTMLElement {
 
   const loadMemories = async () => {
     try {
+      const paths = JSON.parse(await invoke<string>("role_storage_paths", { profile: cfg.personality.default_profile })) as RoleStoragePaths;
+      pathHint.textContent = `Active role: ${cfg.personality.default_profile}\nMemory: ${paths.memory}`;
       const raw = await invoke<string>("list_memories", {
         query: queryInput.value.trim() || null,
         includeArchived: includeArchived.checked,
@@ -1112,6 +1352,7 @@ function buildMemoryPanel(): HTMLElement {
   panel.append(
     el("h2", {}, "Memory"),
     status,
+    pathHint,
     el(
       "div",
       { class: "settings-section" },
@@ -1836,11 +2077,17 @@ async function buildApp() {
   });
   themeSelect.addEventListener("change", () => applyTheme(themeSelect.value));
 
-  const personaBtn = el("button", { class: "sidebar-btn", type: "button" }, icon("brush", 16), "Persona");
-  personaBtn.addEventListener("click", () => document.body.append(buildPersonaEditor(cfg)));
+  const roleBtn = el("button", { class: "sidebar-btn", type: "button" }, icon("brush", 16), "Roles");
+  roleBtn.addEventListener("click", () =>
+    document.body.append(
+      buildRoleManager(cfg, (roleId) => {
+        cfg.personality.default_profile = roleId;
+      }),
+    ),
+  );
 
   const memoryBtn = el("button", { class: "sidebar-btn", type: "button" }, icon("memory", 16), "Memory");
-  memoryBtn.addEventListener("click", () => document.body.append(buildMemoryPanel()));
+  memoryBtn.addEventListener("click", () => document.body.append(buildMemoryPanel(cfg)));
 
   const imageBtn = el("button", { class: "sidebar-btn", type: "button" }, icon("image", 16), "Image Test");
   imageBtn.addEventListener("click", () => document.body.append(buildImageTestPanel()));
@@ -1896,7 +2143,7 @@ async function buildApp() {
     ),
     el("div", { class: "sidebar-spacer" }),
     el("div", { class: "theme-toggle" }, icon("moon", 16), themeSelect),
-    el("div", { class: "sidebar-actions" }, personaBtn, memoryBtn, imageBtn, companionBtn, settingsBtn),
+    el("div", { class: "sidebar-actions" }, roleBtn, memoryBtn, imageBtn, companionBtn, settingsBtn),
   );
 
   const main = el("main", { class: "main-content" });

@@ -677,6 +677,9 @@ pub fn update_user_config(updates: serde_json::Value) -> Result<(), Box<dyn std:
         if let Some(v) = updates.get("persona_rewrite_enabled") {
             upsert("persona_rewrite", "enabled", v);
         }
+        if let Some(v) = updates.get("personality_default_profile") {
+            upsert("personality", "default_profile", v);
+        }
         if let Some(v) = updates.get("local_llm_auto_load") {
             upsert("local_llm", "auto_load", v);
         }

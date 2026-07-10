@@ -2,15 +2,60 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use tracing::info;
 
+fn default_schema_version() -> u32 {
+    2
+}
+
+fn default_role_id() -> String {
+    "default".into()
+}
+
+fn default_role_name() -> String {
+    "Hestia".into()
+}
+
+fn default_verbosity() -> String {
+    "medium".into()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PersonaConfig {
+    #[serde(default = "default_schema_version")]
     pub schema_version: u32,
+    #[serde(default = "default_role_id")]
+    pub id: String,
+    #[serde(default = "default_role_name")]
     pub name: String,
+    #[serde(default)]
+    pub aliases: Vec<String>,
+    #[serde(default)]
+    pub identity: String,
+    #[serde(default)]
+    pub species: String,
+    #[serde(default)]
+    pub appearance: String,
+    #[serde(default)]
+    pub personality: String,
+    #[serde(default)]
+    pub language_style: String,
+    #[serde(default)]
+    pub scenario: String,
+    #[serde(default)]
     pub tone: String,
+    #[serde(default)]
     pub initiative: f64,
+    #[serde(default)]
     pub humor: f64,
+    #[serde(default = "default_verbosity")]
     pub verbosity: String,
+    #[serde(default)]
     pub style_rules: Vec<String>,
+    #[serde(default)]
+    pub pinned: bool,
+    #[serde(default)]
+    pub created_at: Option<u64>,
+    #[serde(default)]
+    pub updated_at: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -33,10 +78,29 @@ impl PromptAssembler {
     }
 
     pub fn build_system_prompt(&self) -> String {
-        // Keep system prompt minimal and functional to avoid triggering
-        // content safety filters. Style rules are applied via the persona
-        // rewrite layer, not via system prompt instructions.
-        "You are a helpful assistant. Respond concisely and precisely.".into()
+        let aliases = if self.persona.aliases.is_empty() {
+            self.persona.name.clone()
+        } else {
+            format!("{}, {}", self.persona.name, self.persona.aliases.join(", "))
+        };
+        [
+            "You are the character described below. The user's references to any listed name or alias refer to you, the character you are role-playing.",
+            "Base style rules:",
+            "- When replying in Chinese, use halfwidth punctuation only: , . ; : ? !",
+            "- Parentheses may be used for brief actions, states, tone, or expressions when appropriate.",
+            "- Do not let style override facts, reasoning, safety, or the user's current request.",
+            "- If long-term memory conflicts with the current user message, prefer the current user message.",
+            "",
+            "Character profile:",
+            &format!("- Name and aliases: {aliases}"),
+            &format!("- Identity: {}", empty_as_unspecified(&self.persona.identity)),
+            &format!("- Species: {}", empty_as_unspecified(&self.persona.species)),
+            &format!("- Appearance: {}", empty_as_unspecified(&self.persona.appearance)),
+            &format!("- Personality: {}", empty_as_unspecified(&self.persona.personality)),
+            &format!("- Language habits: {}", empty_as_unspecified(&self.persona.language_style)),
+            &format!("- Scenario: {}", empty_as_unspecified(&self.persona.scenario)),
+        ]
+        .join("\n")
     }
 
     pub fn assemble_messages_with_context(
@@ -78,19 +142,31 @@ impl PromptAssembler {
     }
 }
 
+fn empty_as_unspecified(value: &str) -> &str {
+    if value.trim().is_empty() {
+        "unspecified"
+    } else {
+        value
+    }
+}
+
 fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
 fn user_persona_dir() -> PathBuf {
-    project_root().join("usr").join("personality")
+    project_root().join("usr").join("roles")
 }
 
 fn bundled_persona_dir_candidates() -> Vec<PathBuf> {
     vec![
         std::env::current_exe()
             .ok()
+            .and_then(|p| p.parent().map(|d| d.join("roles"))),
+        std::env::current_exe()
+            .ok()
             .and_then(|p| p.parent().map(|d| d.join("personality"))),
+        Some(project_root().join("roles")),
         Some(project_root().join("personality")),
         Some(PathBuf::from("personality")),
     ]
@@ -100,6 +176,7 @@ fn bundled_persona_dir_candidates() -> Vec<PathBuf> {
 }
 
 fn persona_read_path(profile_name: &str) -> PathBuf {
+    let profile_name = sanitize_profile_id(profile_name);
     let filename = format!("{}.json", profile_name);
     let mut candidates = vec![user_persona_dir().join(&filename)];
     candidates.extend(
@@ -116,7 +193,19 @@ fn persona_read_path(profile_name: &str) -> PathBuf {
 }
 
 fn persona_write_path(profile_name: &str) -> PathBuf {
-    user_persona_dir().join(format!("{}.json", profile_name))
+    user_persona_dir().join(format!("{}.json", sanitize_profile_id(profile_name)))
+}
+
+fn sanitize_profile_id(profile_name: &str) -> String {
+    let value: String = profile_name
+        .chars()
+        .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '_' || *ch == '-')
+        .collect();
+    if value.trim().is_empty() {
+        "default".into()
+    } else {
+        value
+    }
 }
 
 pub fn list_profiles() -> Vec<String> {
@@ -146,6 +235,28 @@ pub fn list_profiles() -> Vec<String> {
     profiles
 }
 
+pub fn list_role_configs() -> Result<Vec<PersonaConfig>, Box<dyn std::error::Error>> {
+    let mut roles = Vec::new();
+    for profile in list_profiles() {
+        let path = persona_read_path(&profile);
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            if let Ok(mut role) = serde_json::from_str::<PersonaConfig>(&content) {
+                if role.id.trim().is_empty() {
+                    role.id = profile;
+                }
+                roles.push(role);
+            }
+        }
+    }
+    roles.sort_by(|a, b| {
+        b.pinned
+            .cmp(&a.pinned)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            .then_with(|| a.id.cmp(&b.id))
+    });
+    Ok(roles)
+}
+
 /// Builds a rewrite prompt for the local personality layer.
 pub struct PersonaRewriter {
     persona: PersonaConfig,
@@ -170,19 +281,29 @@ impl PersonaRewriter {
     }
 
     pub fn build_rewrite_job_payload(&self, raw_content: &str) -> serde_json::Value {
-        let style_rules = self.persona.style_rules.join(
+        let role_rules = [
+            format!("Character name: {}", self.persona.name),
+            format!("Aliases: {}", self.persona.aliases.join(", ")),
+            format!("Identity: {}", self.persona.identity),
+            format!("Species: {}", self.persona.species),
+            format!("Appearance: {}", self.persona.appearance),
+            format!("Personality: {}", self.persona.personality),
+            format!("Language habits: {}", self.persona.language_style),
+            format!("Tone: {}", self.persona.tone),
+        ]
+        .join(
             "
 - ",
         );
         let rewrite_prompt = self
             .template
             .replace("{tone}", &self.persona.tone)
-            .replace("{style_rules}", &style_rules)
+            .replace("{style_rules}", &role_rules)
             .replace("{content}", raw_content);
         let messages = vec![
             serde_json::json!({
                 "role": "system",
-                "content": "You polish text to match a desired communication style. Given a message and style rules, enhance it to fit the rules while preserving the original voice and energy. If the original has personality, keep it. If it uses brief parenthetical states, actions, or tone markers, preserve them only when they remain generic and restrained. Only enforce hard constraints explicitly listed in the rules, such as punctuation format or no exclamation marks. Do not add fixed species, identity, age, gender, job, catchphrase, or body-feature cues. Do not make the text colder or more robotic. Output only the result."
+                "content": "You polish text to match the character profile and base style. Preserve meaning. Chinese replies must use halfwidth punctuation only. Parentheses may contain brief actions, states, tone, or expressions when appropriate. Do not add constraints that are not in the character profile. Output only the result."
             }),
             serde_json::json!({
                 "role": "user",
@@ -209,8 +330,12 @@ pub fn save_persona_raw(
     content: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Validate it's valid JSON and matches PersonaConfig schema
-    let _parsed: PersonaConfig =
+    let parsed: PersonaConfig =
         serde_json::from_str(content).map_err(|e| format!("invalid persona JSON: {}", e))?;
+    let sanitized_profile = sanitize_profile_id(profile_name);
+    if parsed.id != sanitized_profile {
+        return Err(format!("role JSON id must equal file id: {sanitized_profile}").into());
+    }
     let path = persona_write_path(profile_name);
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
@@ -218,4 +343,20 @@ pub fn save_persona_raw(
     std::fs::write(&path, content)?;
     info!("persona saved to {}", path.display());
     Ok(())
+}
+
+pub fn delete_persona(profile_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    if profile_name == "default" {
+        return Err("default role cannot be deleted".into());
+    }
+    let path = persona_write_path(profile_name);
+    if !path.exists() {
+        return Err(format!("role override not found: {profile_name}").into());
+    }
+    std::fs::remove_file(&path)?;
+    Ok(())
+}
+
+pub fn role_storage_path(profile_name: &str) -> String {
+    persona_write_path(profile_name).display().to_string()
 }

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use tauri::menu::MenuBuilder;
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
@@ -60,6 +60,39 @@ struct ImageIntentDecision {
     image_prompt: Option<String>,
     negative_prompt: Option<String>,
     response_text: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
+struct RoleGenerationSeed {
+    name: Option<String>,
+    aliases: Option<Vec<String>>,
+    identity: Option<String>,
+    species: Option<String>,
+    appearance: Option<String>,
+    personality: Option<String>,
+    language_style: Option<String>,
+    scenario: Option<String>,
+}
+
+fn current_config(state: &AppState) -> AppConfig {
+    config::load_config().unwrap_or_else(|_| state.config.clone())
+}
+
+fn current_role_id(state: &AppState) -> String {
+    current_config(state).personality.default_profile
+}
+
+fn extract_json_object_text(content: &str) -> &str {
+    let trimmed = content.trim();
+    if trimmed.starts_with('{') && trimmed.ends_with('}') {
+        return trimmed;
+    }
+    if let (Some(start), Some(end)) = (trimmed.find('{'), trimmed.rfind('}')) {
+        if start < end {
+            return &trimmed[start..=end];
+        }
+    }
+    trimmed
 }
 
 // ── Query commands ──
@@ -251,6 +284,13 @@ fn list_personas() -> Vec<String> {
 }
 
 #[tauri::command]
+fn list_roles() -> Result<String, String> {
+    let roles =
+        personality::list_role_configs().map_err(|e| format!("failed to list roles: {}", e))?;
+    serde_json::to_string(&roles).map_err(|e| format!("failed to serialize roles: {}", e))
+}
+
+#[tauri::command]
 fn get_persona_content(profile: String) -> Result<String, String> {
     personality::read_persona_raw(&profile).map_err(|e| format!("failed to read persona: {}", e))
 }
@@ -263,34 +303,129 @@ fn save_persona_content(profile: String, content: String) -> Result<String, Stri
 }
 
 #[tauri::command]
-fn list_memories(query: Option<String>, include_archived: Option<bool>) -> Result<String, String> {
-    let memories = memory::list_memories(query.as_deref(), include_archived.unwrap_or(false))
-        .map_err(|e| format!("failed to list memories: {}", e))?;
+fn role_storage_paths(profile: String) -> String {
+    serde_json::json!({
+        "role": personality::role_storage_path(&profile),
+        "memory": memory::memory_storage_path(&profile),
+    })
+    .to_string()
+}
+
+#[tauri::command]
+fn set_active_role(state: tauri::State<'_, AppState>, profile: String) -> Result<String, String> {
+    if !personality::list_profiles().contains(&profile) {
+        return Err(format!("role not found: {profile}"));
+    }
+    config::update_user_config(serde_json::json!({ "personality_default_profile": profile }))
+        .map_err(|e| format!("failed to update active role: {}", e))?;
+    let cfg = current_config(&state);
+    Ok(serde_json::json!({ "active_role": cfg.personality.default_profile }).to_string())
+}
+
+#[tauri::command]
+fn delete_role(
+    state: tauri::State<'_, AppState>,
+    profile: String,
+    confirmation: String,
+) -> Result<String, String> {
+    let expected = format!("我确认删除{profile}");
+    if confirmation != expected {
+        return Err(format!("confirmation must exactly be: {expected}"));
+    }
+    personality::delete_persona(&profile).map_err(|e| format!("failed to delete role: {}", e))?;
+    if current_role_id(&state) == profile {
+        config::update_user_config(serde_json::json!({ "personality_default_profile": "default" }))
+            .map_err(|e| format!("failed to reset active role: {}", e))?;
+    }
+    Ok("ok".into())
+}
+
+#[tauri::command]
+async fn generate_role_profile(
+    state: tauri::State<'_, AppState>,
+    seed: RoleGenerationSeed,
+) -> Result<String, String> {
+    let prompt = [
+        "Generate a complete character profile for a desktop AI companion.",
+        "Return strict JSON only. Do not wrap it in markdown.",
+        "Schema:",
+        r#"{"schema_version":2,"id":"lowercase_ascii_id","name":"称呼","aliases":["别称"],"identity":"身份","species":"物种","appearance":"形象","personality":"性格","language_style":"语言习惯","scenario":"使用场景","tone":"总体语气","initiative":0.3,"humor":0.2,"verbosity":"medium","pinned":false}"#,
+        "Rules:",
+        "- The name and aliases must make it clear that later user references to these words mean the character being role-played.",
+        "- Fill missing fields from the provided identity, species, and personality.",
+        "- Keep the profile usable across ordinary conversations.",
+        "- Do not include base prompt rules such as punctuation policy or parenthetical action syntax.",
+        "- id must be lowercase ASCII letters, digits, '_' or '-'.",
+        "",
+        "User-provided partial profile:",
+        &serde_json::to_string_pretty(&seed).map_err(|e| format!("failed to serialize seed: {}", e))?,
+    ]
+    .join("\n");
+    let assembler = PromptAssembler::load(&current_role_id(&state))
+        .map_err(|e| format!("failed to load active role: {}", e))?;
+    let messages = assembler.assemble_messages_with_context(&prompt, &[], None);
+    let job = crate::protocol::Job::new(
+        "role_profile_generation",
+        crate::protocol::Capability::Chat,
+        serde_json::json!({ "messages": messages }),
+    );
+    let result = state.remote_worker.infer(&job).await.map_err(|e| {
+        error!(error = %e, "role profile generation failed");
+        format!("role generation failed: {}", e)
+    })?;
+    let content = extract_json_object_text(result["content"].as_str().unwrap_or(""));
+    let parsed: personality::PersonaConfig = serde_json::from_str(content)
+        .map_err(|e| format!("role generator returned invalid JSON: {}", e))?;
+    serde_json::to_string_pretty(&parsed)
+        .map_err(|e| format!("failed to serialize generated role: {}", e))
+}
+
+#[tauri::command]
+fn list_memories(
+    state: tauri::State<'_, AppState>,
+    query: Option<String>,
+    include_archived: Option<bool>,
+) -> Result<String, String> {
+    let role_id = current_role_id(&state);
+    let memories = memory::list_memories(
+        &role_id,
+        query.as_deref(),
+        include_archived.unwrap_or(false),
+    )
+    .map_err(|e| format!("failed to list memories: {}", e))?;
     serde_json::to_string(&memories).map_err(|e| format!("failed to serialize memories: {}", e))
 }
 
 #[tauri::command]
 fn create_memory(
+    state: tauri::State<'_, AppState>,
     kind: String,
     content: String,
     source: Option<String>,
     pinned: Option<bool>,
 ) -> Result<String, String> {
-    let memory = memory::create_memory(kind, content, source, pinned)
+    let role_id = current_role_id(&state);
+    let memory = memory::create_memory(&role_id, kind, content, source, pinned)
         .map_err(|e| format!("failed to create memory: {}", e))?;
     serde_json::to_string(&memory).map_err(|e| format!("failed to serialize memory: {}", e))
 }
 
 #[tauri::command]
-fn update_memory(id: String, patch: MemoryPatch) -> Result<String, String> {
-    let memory =
-        memory::update_memory(id, patch).map_err(|e| format!("failed to update memory: {}", e))?;
+fn update_memory(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    patch: MemoryPatch,
+) -> Result<String, String> {
+    let role_id = current_role_id(&state);
+    let memory = memory::update_memory(&role_id, id, patch)
+        .map_err(|e| format!("failed to update memory: {}", e))?;
     serde_json::to_string(&memory).map_err(|e| format!("failed to serialize memory: {}", e))
 }
 
 #[tauri::command]
-fn delete_memory(id: String) -> Result<String, String> {
-    memory::delete_memory(id).map_err(|e| format!("failed to delete memory: {}", e))?;
+fn delete_memory(state: tauri::State<'_, AppState>, id: String) -> Result<String, String> {
+    let role_id = current_role_id(&state);
+    memory::delete_memory(&role_id, id).map_err(|e| format!("failed to delete memory: {}", e))?;
     Ok("ok".into())
 }
 
@@ -377,7 +512,7 @@ async fn request_initiative_message(
             .initiative
             .lock()
             .map_err(|e| format!("failed to lock initiative runtime: {}", e))?;
-        let config = config::load_config().unwrap_or_else(|_| state.config.clone());
+        let config = current_config(&state);
         runtime.evaluate(&config.initiative, &trigger)
     };
     if !decision.allowed {
@@ -389,12 +524,15 @@ async fn request_initiative_message(
         .to_string());
     }
 
-    let assembler = PromptAssembler::load(&state.config.personality.default_profile)
-        .map_err(|e| format!("failed to load persona: {}", e))?;
-    let memories = memory::relevant_memories(&decision.suggested_prompt, 6).unwrap_or_else(|e| {
-        warn!(error = %e, "failed to load initiative memory context");
-        Vec::new()
-    });
+    let cfg = current_config(&state);
+    let role_id = cfg.personality.default_profile.clone();
+    let assembler =
+        PromptAssembler::load(&role_id).map_err(|e| format!("failed to load persona: {}", e))?;
+    let memories = memory::relevant_memories(&role_id, &decision.suggested_prompt, 6)
+        .unwrap_or_else(|e| {
+            warn!(error = %e, "failed to load initiative memory context");
+            Vec::new()
+        });
     let memory_context = memory::format_memory_context(&memories);
     let messages = assembler.assemble_messages_with_context(
         &decision.suggested_prompt,
@@ -1094,12 +1232,14 @@ async fn send_chat_message(
         .to_string());
     }
 
-    let assembler = PromptAssembler::load(&state.config.personality.default_profile)
-        .map_err(|e| format!("failed to load persona: {}", e))?;
+    let cfg = current_config(&state);
+    let role_id = cfg.personality.default_profile.clone();
+    let assembler =
+        PromptAssembler::load(&role_id).map_err(|e| format!("failed to load persona: {}", e))?;
 
     let persona_name = assembler.persona_name().to_string();
 
-    let memories = memory::relevant_memories(&message, 8).unwrap_or_else(|e| {
+    let memories = memory::relevant_memories(&role_id, &message, 8).unwrap_or_else(|e| {
         warn!(error = %e, "failed to load memory context");
         Vec::new()
     });
@@ -1108,7 +1248,7 @@ async fn send_chat_message(
         assembler.assemble_messages_with_context(&message, &history, memory_context.as_deref());
     let messages_json = serde_json::Value::Array(messages);
 
-    if state.config.observability.prompt_logs {
+    if cfg.observability.prompt_logs {
         observability::log_prompt(&messages_json);
     }
 
@@ -1132,7 +1272,7 @@ async fn send_chat_message(
 
     let raw_content = result["content"].as_str().unwrap_or("").to_string();
 
-    if state.config.observability.token_usage {
+    if cfg.observability.token_usage {
         if let Some(usage) = result.get("usage") {
             let model = result["model"].as_str().unwrap_or("unknown");
             observability::log_token_usage(model, usage);
@@ -1140,7 +1280,7 @@ async fn send_chat_message(
     }
 
     // Step 2: Optionally rewrite through local personality layer
-    if state.config.persona_rewrite.enabled {
+    if cfg.persona_rewrite.enabled {
         if !state.local_llm_available {
             warn!("persona rewrite enabled but local LLM is not available");
             return Ok(serde_json::json!({
@@ -1156,9 +1296,9 @@ async fn send_chat_message(
             let persona = assembler.persona_config();
             let rewriter = PersonaRewriter::new(
                 persona,
-                state.config.persona_rewrite.prompt_template.clone(),
-                state.config.persona_rewrite.temperature,
-                state.config.persona_rewrite.max_tokens,
+                cfg.persona_rewrite.prompt_template.clone(),
+                cfg.persona_rewrite.temperature,
+                cfg.persona_rewrite.max_tokens,
             );
 
             let rewrite_payload = rewriter.build_rewrite_job_payload(&raw_content);
@@ -1596,6 +1736,7 @@ pub fn run() {
             show_main_window,
             open_settings_window,
             list_personas,
+            list_roles,
             list_available_models,
             get_screenshot_metadata,
             set_companion_visible,
@@ -1612,6 +1753,10 @@ pub fn run() {
             submit_test_job,
             get_persona_content,
             save_persona_content,
+            role_storage_paths,
+            set_active_role,
+            delete_role,
+            generate_role_profile,
             list_memories,
             create_memory,
             update_memory,
