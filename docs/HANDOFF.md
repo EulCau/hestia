@@ -84,7 +84,8 @@
 - [x] **Role generation command**: uses the configured remote chat worker to complete missing role profile fields from identity/species/personality
 - [x] **Active role config**: `[personality] default_profile` in `config/user.toml`
 - [x] **Role-specific memory** (`memory.rs`): stores memory under `usr/memory/{role_id}/memories.json`
-- [x] **Manual memory UI**: create, edit, pin, archive, delete memories for the active role
+- [x] **Automatic memory writes**: normal chat, companion dialogue, and successful companion initiative messages write active-role memories
+- [x] **Memory UI**: create, edit, pin, archive, delete, and compress memories for the active role
 - [x] **Prompt context injection**: chat and companion initiative load active-role memories before prompt assembly
 - [x] **Base prompt rules**: global formatting and action rules live in `PromptAssembler`, not in role personality files
 
@@ -122,6 +123,7 @@ All commands are registered in `src/lib.rs` invoke_handler. The frontend calls t
 | `create_memory` | `kind: string, content: string, source?: string, pinned?: boolean` | `string` (JSON: MemoryItem) | Adds a manual memory for the active role |
 | `update_memory` | `id: string, patch: object` | `string` (JSON: MemoryItem) | Edits, pins, archives, or restores memory |
 | `delete_memory` | `id: string` | `string` "ok" | Deletes a memory |
+| `compress_memories` | none | `string` (JSON: Vec<MemoryItem>) | Replaces active-role memory with API-compressed entries |
 | `send_chat_message` | `message: string, history: ChatMessage[]` | `string` (JSON: `{content, rewritten, generated_image?, images?, image_prompt?}`) | Main chat pipeline plus chat image generation. `history` is array of `{role, content}` |
 | `generate_test_image` | `prompt: string, negativePrompt?: string` | `string` (JSON: `{prompt_id, images, workflow_path}`) | Explicit ComfyUI test generation |
 | `recognize_image` | `path: string, prompt?: string` | `string` (JSON: `{content, model, source, image_path}`) | Kimi vision recognition for local uploads; future screenshots can reuse the internal helper |
@@ -420,7 +422,7 @@ The companion window starts hidden. The main window controls it with `set_compan
 
 Do not do yet:
 - Do not implement Plugin Boundary before the companion event shape settles.
-- Do not add automatic memory writes before a user confirmation workflow exists.
+- Automatic memory writes are enabled. Add review/confirmation only if noise becomes a problem.
 - Do not add VRM assets until the Live2D behavior is stable.
 - Do not let the main chat window use automatic proactive triggers.
 - Do not call `request_initiative_message` with `trigger = "timer"` or `window_timer` for automatic speech; backend will block it via `non_companion_trigger`.
@@ -441,7 +443,7 @@ Read these first:
 Likely first files to inspect:
 - [frontend/src/main.ts](/home/eulcau/CXTX/hestia/frontend/src/main.ts): main UI, companion view, companion dialogue view, initiative timer, bounds persistence
 - [src-tauri/src/lib.rs](/home/eulcau/CXTX/hestia/src-tauri/src/lib.rs): Tauri commands, tray, close/hide lifecycle, companion visibility events
-- [src-tauri/src/memory.rs](/home/eulcau/CXTX/hestia/src-tauri/src/memory.rs): manual memory storage, retrieval, prompt context formatting
+- [src-tauri/src/memory.rs](/home/eulcau/CXTX/hestia/src-tauri/src/memory.rs): automatic/manual memory storage, compression replacement, retrieval, prompt context formatting
 - [src-tauri/src/personality/mod.rs](/home/eulcau/CXTX/hestia/src-tauri/src/personality/mod.rs): role schema, role file I/O, prompt assembly
 - [src-tauri/src/config.rs](/home/eulcau/CXTX/hestia/src-tauri/src/config.rs): `ConfigSnapshot`, `update_settings`, `[companion.window]`
 - [config/default.toml](/home/eulcau/CXTX/hestia/config/default.toml): default companion bounds and runtime settings
@@ -454,7 +456,7 @@ Stable companion contracts:
 - `companion-dialog-visible-changed` is the source of truth for Bubble button state and dialogue request cleanup.
 - `companion-avatar-event` carries avatar renderer events: `expression`, `motion`, `speak_start`, `speak_stop`, `look_at`, and `idle`.
 - Companion position and size are restored from `[companion.window]` and persisted through `update_settings`.
-- User-managed memory is stored under `usr/memory/{role_id}/memories.json` in development and injected as bounded prompt context. Archived memories are excluded; pinned memories are preferred.
+- User-managed and automatically written memory is stored under `usr/memory/{role_id}/memories.json` in development and injected as bounded prompt context. Archived memories are excluded; pinned memories are preferred.
 - User-created roles are stored under `usr/roles/{id}.json` in development, with copied role avatar assets under `usr/roles/{id}/avatar/`. The bundled `default` role remains in `personality/default.json`.
 
 Recommended next task:

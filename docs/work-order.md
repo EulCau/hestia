@@ -173,12 +173,13 @@ Completed:
 - [x] Local memory schema and storage under ignored `usr/memory/`
 - [x] Per-role memory isolation
 - [x] Manual memory CRUD commands
+- [x] Automatic memory writes from chat, companion dialogue, and companion initiative
+- [x] API-backed memory compression command and UI button
 - [x] Memory management UI
 - [x] Lightweight pinned/recent/keyword retrieval
 - [x] Prompt context injection for chat and companion initiative
 
 Deferred:
-- [ ] Automatic memory extraction
 - [ ] User confirmation workflow for model-suggested memories
 - [ ] Semantic/vector retrieval
 - [ ] Packaged-build migration for roles and memory to system user data directory

@@ -95,6 +95,49 @@ fn extract_json_object_text(content: &str) -> &str {
     trimmed
 }
 
+fn extract_json_array_text(content: &str) -> &str {
+    let trimmed = content.trim();
+    if trimmed.starts_with('[') && trimmed.ends_with(']') {
+        return trimmed;
+    }
+    if let (Some(start), Some(end)) = (trimmed.find('['), trimmed.rfind(']')) {
+        if start < end {
+            return &trimmed[start..=end];
+        }
+    }
+    trimmed
+}
+
+fn truncate_for_memory(value: &str, max_chars: usize) -> String {
+    let mut result = String::new();
+    for ch in value.trim().chars().take(max_chars) {
+        result.push(ch);
+    }
+    result
+}
+
+fn remember_interaction(role_id: &str, user_text: &str, assistant_text: &str, source: &str) {
+    let user_text = truncate_for_memory(user_text, 900);
+    let assistant_text = truncate_for_memory(assistant_text, 1200);
+    if user_text.trim().is_empty() && assistant_text.trim().is_empty() {
+        return;
+    }
+    let content = if user_text.trim().is_empty() {
+        format!("Assistant proactive message: {assistant_text}")
+    } else {
+        format!("User: {user_text}\nAssistant: {assistant_text}")
+    };
+    if let Err(e) = memory::create_memory(
+        role_id,
+        "note".into(),
+        content,
+        Some(source.into()),
+        Some(false),
+    ) {
+        warn!(error = %e, role_id, "failed to create automatic memory");
+    }
+}
+
 // ── Query commands ──
 
 #[tauri::command]
@@ -435,6 +478,71 @@ fn delete_memory(state: tauri::State<'_, AppState>, id: String) -> Result<String
     Ok("ok".into())
 }
 
+#[tauri::command]
+async fn compress_memories(state: tauri::State<'_, AppState>) -> Result<String, String> {
+    let role_id = current_role_id(&state);
+    let memories =
+        memory::load_memories(&role_id).map_err(|e| format!("failed to load memories: {}", e))?;
+    let active: Vec<_> = memories
+        .into_iter()
+        .filter(|memory| !memory.archived)
+        .collect();
+    if active.is_empty() {
+        return Ok("[]".into());
+    }
+
+    let prompt = [
+        "Compress long-term memory for a desktop AI companion.",
+        "Return strict JSON only. Do not wrap it in markdown.",
+        "Output schema: an array of objects like:",
+        r#"[{"kind":"fact|preference|project|relationship|note","content":"compressed memory","pinned":false}]"#,
+        "Rules:",
+        "- Preserve the main facts, preferences, projects, relationships, and ongoing context.",
+        "- Merge duplicate or near-duplicate memories.",
+        "- Keep pinned memories unless they are fully represented by a better merged entry.",
+        "- You may randomly discard a small amount of very old minor detail.",
+        "- Prefer fewer, denser entries over many tiny entries.",
+        "- Keep each content field concrete and editable by the user.",
+        "- Do not invent facts that are not supported by the input.",
+        "- Use the same language as the input when practical.",
+        "- Target at most 24 entries unless the input clearly needs more.",
+        "",
+        "Input memories:",
+        &serde_json::to_string_pretty(&active)
+            .map_err(|e| format!("failed to serialize memories: {}", e))?,
+    ]
+    .join("\n");
+
+    let messages = vec![
+        serde_json::json!({
+            "role": "system",
+            "content": "You compress user-editable long-term memory. Return only strict JSON."
+        }),
+        serde_json::json!({
+            "role": "user",
+            "content": prompt,
+        }),
+    ];
+    let mut job = crate::protocol::Job::new(
+        "memory_compression",
+        crate::protocol::Capability::Chat,
+        serde_json::json!({ "messages": messages }),
+    );
+    job.timeout_ms = 60000;
+
+    let result = state.remote_worker.infer(&job).await.map_err(|e| {
+        error!(error = %e, "memory compression failed");
+        format!("memory compression failed: {}", e)
+    })?;
+    let content = extract_json_array_text(result["content"].as_str().unwrap_or(""));
+    let drafts: Vec<memory::MemoryDraft> = serde_json::from_str(content)
+        .map_err(|e| format!("memory compressor returned invalid JSON: {}", e))?;
+    let compressed = memory::replace_memories_from_drafts(&role_id, drafts, "system")
+        .map_err(|e| format!("failed to save compressed memories: {}", e))?;
+    serde_json::to_string(&compressed)
+        .map_err(|e| format!("failed to serialize compressed memories: {}", e))
+}
+
 // ── Mutate commands ──
 
 fn emit_avatar_config_changed(app: &tauri::AppHandle, avatar: &config::AvatarSection) {
@@ -593,6 +701,7 @@ async fn request_initiative_message(
     if content.trim().is_empty() {
         return Err("initiative model returned empty content".into());
     }
+    remember_interaction(&role_id, "", &content, "system");
     state
         .initiative
         .lock()
@@ -1317,6 +1426,7 @@ async fn send_chat_message(
             return Err("image prompt is empty".into());
         }
         let result = run_image_generation(&state, prompt.clone(), None).await?;
+        remember_interaction(&current_role_id(&state), &message, "已完成生图.", "chat");
         return Ok(serde_json::json!({
             "content": "已完成生图.",
             "rewritten": false,
@@ -1347,6 +1457,7 @@ async fn send_chat_message(
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .unwrap_or("我判断这条消息是在请求生图, 已把提示词交给 ComfyUI.");
+        remember_interaction(&current_role_id(&state), &message, content, "chat");
         return Ok(serde_json::json!({
             "content": content,
             "rewritten": false,
@@ -1411,6 +1522,7 @@ async fn send_chat_message(
     if cfg.persona_rewrite.enabled {
         if !state.local_llm_available {
             warn!("persona rewrite enabled but local LLM is not available");
+            remember_interaction(&role_id, &message, &raw_content, "chat");
             return Ok(serde_json::json!({
                 "content": raw_content,
                 "rewritten": false
@@ -1476,6 +1588,7 @@ async fn send_chat_message(
                         original_len = raw_content.len(),
                         "persona rewrite complete"
                     );
+                    remember_interaction(&role_id, &message, &final_content, "chat");
                     return Ok(serde_json::json!({
                         "content": final_content,
                         "rewritten": true
@@ -1495,6 +1608,7 @@ async fn send_chat_message(
         }
     }
 
+    remember_interaction(&role_id, &message, &raw_content, "chat");
     Ok(serde_json::json!({
         "content": raw_content,
         "rewritten": false
@@ -1890,6 +2004,7 @@ pub fn run() {
             create_memory,
             update_memory,
             delete_memory,
+            compress_memories,
             send_chat_message,
             generate_test_image,
         ])

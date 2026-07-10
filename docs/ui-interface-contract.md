@@ -271,6 +271,17 @@ Errors:   string if id is missing or storage cannot be written
 Side effect: Removes the memory from usr/memory/{active_role}/memories.json.
 ```
 
+#### `compress_memories`
+```
+Arguments: none
+Returns:  string (JSON) — MemoryItem[]
+Errors:   string if memory loading, model inference, JSON parsing, or saving fails
+Side effect: Replaces usr/memory/{active_role}/memories.json with compressed memory entries.
+Usage:    Used by the Memory panel Compress button. The configured remote chat API summarizes
+          current non-archived memories, preserves main context and pinned information where
+          possible, merges duplicates, and may discard minor old detail.
+```
+
 #### `role_storage_paths`
 ```
 Arguments: { profile: string }
@@ -1061,7 +1072,7 @@ Memory storage is local user state:
 usr/memory/{active_role}/memories.json
 ```
 
-The Memory panel is manual. The model does not automatically create memories in the MVP. Chat and companion initiative requests retrieve a small set of pinned/relevant non-archived memories for the active role and inject them as a separate system context message. Current user input has priority over memory if they conflict.
+The Memory panel is inspectable and editable. `send_chat_message` automatically records successful normal-chat and companion-dialogue turns for the active role. `request_initiative_message` records successful proactive companion messages as system-source memories. Chat and companion initiative requests retrieve a small set of pinned/relevant non-archived memories for the active role and inject them as a separate system context message. Current user input has priority over memory if they conflict.
 
 ### 9.6 Role Profiles
 

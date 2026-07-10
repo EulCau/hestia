@@ -1386,6 +1386,7 @@ function buildMemoryPanel(cfg: ConfigSnapshot): HTMLElement {
   const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("check", 16), "Save");
   const newBtn = el("button", { class: "btn btn-secondary", type: "button" }, "New");
   const reloadBtn = el("button", { class: "btn btn-secondary", type: "button" }, icon("refresh", 16), "Load");
+  const compressBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Compress");
   const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Close");
 
   saveBtn.addEventListener("click", async () => {
@@ -1418,6 +1419,19 @@ function buildMemoryPanel(cfg: ConfigSnapshot): HTMLElement {
   });
   newBtn.addEventListener("click", resetEditor);
   reloadBtn.addEventListener("click", () => void loadMemories());
+  compressBtn.addEventListener("click", async () => {
+    compressBtn.setAttribute("disabled", "true");
+    setStatus(status, true, "Compressing memories...");
+    try {
+      await invoke<string>("compress_memories");
+      setStatus(status, true, "Compressed memories.");
+      await loadMemories();
+    } catch (error) {
+      setStatus(status, false, String(error));
+    } finally {
+      compressBtn.removeAttribute("disabled");
+    }
+  });
   queryInput.addEventListener("input", () => void loadMemories());
   includeArchived.addEventListener("change", () => void loadMemories());
   closeBtn.addEventListener("click", () => overlay.remove());
@@ -1437,7 +1451,7 @@ function buildMemoryPanel(cfg: ConfigSnapshot): HTMLElement {
       fieldRow("Kind", kindSelect),
       fieldRow("Pinned", pinnedInput),
       fieldRow("Content", contentInput),
-      el("div", { class: "settings-actions" }, newBtn, reloadBtn, saveBtn),
+      el("div", { class: "settings-actions" }, newBtn, reloadBtn, compressBtn, saveBtn),
     ),
     list,
     el("div", { class: "settings-actions" }, closeBtn),

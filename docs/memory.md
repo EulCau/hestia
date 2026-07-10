@@ -7,17 +7,20 @@
 
 ## 1. Goal
 
-Memory turns Hestia from a stateless chat surface into a usable personal companion. The first implementation is intentionally manual and inspectable:
+Memory turns Hestia from a stateless chat surface into a usable personal companion. The current implementation is automatic but inspectable:
 
 ```text
-User-managed memory
+Chat / companion dialogue / companion initiative
+-> automatic memory write
 -> local storage
 -> lightweight retrieval
 -> prompt context injection
 -> model response
 ```
 
-The model does not write memories automatically in the MVP. This avoids long-term state pollution from incorrect or overconfident extraction. Automatic memory should be added later as a suggestion workflow where the user confirms what is saved.
+Every successful `send_chat_message` call writes a compact turn memory for the active role. This covers both the normal chat window and the companion dialogue window because both use the same backend command. Successful proactive companion messages from `request_initiative_message` are also recorded as system-source memories.
+
+The Memory panel remains user-editable. Users can still create, edit, pin, archive, delete, and compress memories.
 
 ---
 
@@ -79,7 +82,7 @@ Selection is deliberately simple:
 4. Sort by score, pinned status, and recent update time.
 5. Mark selected memories with `last_used_at`.
 
-This is not semantic retrieval. Embeddings or vector search should be added only after the manual memory loop proves useful.
+This is not semantic retrieval. Embeddings or vector search should be added only after the automatic memory loop proves useful.
 
 ---
 
@@ -109,8 +112,11 @@ The main sidebar includes a Memory button. The panel supports:
 - pin/unpin
 - archive/restore
 - delete
+- compress memories with the configured remote chat API
 
 Memory changes are immediately available to the next chat or companion initiative request.
+
+Compression replaces the active role's memory file with model-generated compressed entries. The prompt asks the model to preserve main facts, preferences, projects, relationships, and ongoing context, merge duplicates, keep pinned information where possible, and discard a small amount of old minor detail when useful.
 
 ---
 
@@ -121,5 +127,5 @@ Recommended next memory work:
 1. Add tests for storage and retrieval ranking.
 2. Move storage to Tauri system user data directory for packaged builds.
 3. Add import/export.
-4. Add model-suggested memories with explicit user confirmation.
-5. Add semantic retrieval only after the manual workflow is stable.
+4. Add optional user review for automatic memory writes if noise becomes a problem.
+5. Add semantic retrieval only after the automatic workflow is stable.

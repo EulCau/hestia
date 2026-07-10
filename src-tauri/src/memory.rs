@@ -27,6 +27,13 @@ pub struct MemoryPatch {
     pub archived: Option<bool>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct MemoryDraft {
+    pub kind: Option<String>,
+    pub content: String,
+    pub pinned: Option<bool>,
+}
+
 fn now_ms() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -174,6 +181,35 @@ pub fn create_memory(
     save_memories(role_id, &memories)?;
     info!(memory_id = %item.id, "memory created");
     Ok(item)
+}
+
+pub fn replace_memories_from_drafts(
+    role_id: &str,
+    drafts: Vec<MemoryDraft>,
+    source: &str,
+) -> Result<Vec<MemoryItem>, Box<dyn std::error::Error>> {
+    let now = now_ms();
+    let mut memories = Vec::new();
+    for (index, draft) in drafts.into_iter().enumerate() {
+        let content = draft.content.trim();
+        if content.is_empty() {
+            continue;
+        }
+        memories.push(MemoryItem {
+            id: format!("mem_{now}_{index}"),
+            kind: normalize_kind(draft.kind.as_deref().unwrap_or("note")),
+            content: content.into(),
+            source: normalize_source(source),
+            confidence: 0.85,
+            created_at: now,
+            updated_at: now,
+            last_used_at: None,
+            pinned: draft.pinned.unwrap_or(false),
+            archived: false,
+        });
+    }
+    save_memories(role_id, &memories)?;
+    Ok(memories)
 }
 
 pub fn update_memory(

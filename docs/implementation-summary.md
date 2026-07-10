@@ -99,11 +99,13 @@
 | Memory schema and storage | `src-tauri/src/memory.rs` | Done |
 | Manual memory commands | `src-tauri/src/lib.rs` | Done |
 | Memory management UI | `frontend/src/main.ts` | Done |
+| Automatic memory writes | `src-tauri/src/lib.rs` | Done |
+| API-backed memory compression | `src-tauri/src/lib.rs`, `frontend/src/main.ts` | Done |
 | Prompt memory context injection | `src-tauri/src/lib.rs`, `src-tauri/src/personality/mod.rs` | Done |
 
 Storage is currently `usr/memory/{role_id}/memories.json`, which is gitignored. Packaged builds should move this to the system user data directory.
 
-The MVP is manual only: the user creates, edits, pins, archives, and deletes memories. The model does not automatically write long-term memory. Memories are scoped to the active role.
+Memory writes are automatic for successful normal-chat turns, companion-dialogue turns, and proactive companion messages. The user can still create, edit, pin, archive, delete, and API-compress memories. Memories are scoped to the active role.
 
 ### 2.7 Role Management
 
