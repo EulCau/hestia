@@ -1,7 +1,7 @@
 # Hestia — Handoff Document
 
 **Date:** 2026-06-15
-**Current Phase:** 8 hardened MVP + lifecycle polish (Desktop Companion Window)
+**Current Phase:** 7 roles + memory core MVP, 8 hardened MVP + lifecycle polish
 **Codebase:** Rust + TypeScript, 23 passing tests
 
 ---
@@ -26,9 +26,9 @@
 
 ### Phase 2 — Remote Chat
 - [x] **RemoteApiWorker** (`workers/remote_api.rs`): DeepSeek/OpenAI-compatible `/v1/chat/completions`
-- [x] **PromptAssembler** (`personality/mod.rs`): loads persona JSON, builds system prompt, assembles OpenAI messages format
-- [x] **Persona config** (`personality/default.json`): tone, style rules, verbosity
-- [x] **send_chat_message** Tauri command: loads persona → assembles prompt → calls DeepSeek → returns response
+- [x] **PromptAssembler** (`personality/mod.rs`): loads role JSON, builds system prompt, assembles OpenAI messages format
+- [x] **Role config** (`personality/default.json`): role identity, appearance, personality, language habits, scenario, and tone
+- [x] **send_chat_message** Tauri command: loads active role → assembles prompt → calls DeepSeek → returns response
 - [x] **API key management**: from `config/user.toml` `[remote_api] api_key` or `DEEPSEEK_API_KEY` env var
 - [x] **Observability**: prompt logs, token usage logs with `tracing` targets
 - [x] **Chat UI** (`frontend/src/main.ts`): message bubbles, input area, loading indicator, error display
@@ -44,7 +44,7 @@
 - [x] **Rewrite pipeline in send_chat_message**: DeepSeek → (if enabled) PersonaRewriter → LocalLlmWorker → final response
 - [x] **Degradation**: if rewrite fails, returns raw DeepSeek response (non-blocking)
 - [x] **Backend selector**: UI dropdown for llama.cpp vs vLLM
-- [x] **Persona editor**: modal with textarea, load/save JSON, validates against `PersonaConfig` schema
+- [x] **Role manager**: modal/form UI with load/save/generate, validates against `PersonaConfig` schema
 - [x] **Qwen3 thinking mode handling**: `reasoning_content` fallback when `content` is empty
 - [x] **max_tokens**: 2048 default for rewrite to accommodate thinking mode
 - [x] **Rewrite status indicators**: sidebar shows `LLM: On/Off | Rewrite: On/Off`, rewritten messages have purple left border
@@ -78,6 +78,16 @@
 - [x] **Settings UI**: enable, level, cooldown
 - [x] **Frontend checks**: manual sparkles button in window mode; automatic proactive speech reserved for future companion mode
 
+### Phase 7 — Roles and Memory Core
+- [x] **Role schema** (`personality/default.json`, `personality/mod.rs`): role id, name, aliases, identity, species, appearance, personality, language habits, scenario, tone, pinned
+- [x] **Role manager UI** (`frontend/src/main.ts`): create, edit, generate, save, select, pin, delete with exact confirmation
+- [x] **Role generation command**: uses the configured remote chat worker to complete missing role profile fields from identity/species/personality
+- [x] **Active role config**: `[personality] default_profile` in `config/user.toml`
+- [x] **Role-specific memory** (`memory.rs`): stores memory under `usr/memory/{role_id}/memories.json`
+- [x] **Manual memory UI**: create, edit, pin, archive, delete memories for the active role
+- [x] **Prompt context injection**: chat and companion initiative load active-role memories before prompt assembly
+- [x] **Base prompt rules**: global formatting and action rules live in `PromptAssembler`, not in role personality files
+
 ---
 
 ## 2. Complete Tauri Command Reference
@@ -90,20 +100,25 @@ All commands are registered in `src/lib.rs` invoke_handler. The frontend calls t
 |---|---|---|---|
 | `get_app_info` | none | `string` (JSON: name, version, phase) | Synchronous |
 | `get_config_snapshot` | none | `string` (JSON: ConfigSnapshot) | See §3 for shape |
-| `list_personas` | none | `Vec<String>` | Reads `personality/` directory |
-| `list_memories` | `query?: string, includeArchived?: boolean` | `string` (JSON: Vec<MemoryItem>) | Reads local user memory store |
+| `list_personas` | none | `Vec<String>` | Legacy persona profile list, reads available role/persona profile ids |
+| `list_roles` | none | `string` (JSON: Vec<RoleProfile>) | Reads bundled and user role files |
+| `list_memories` | `query?: string, includeArchived?: boolean` | `string` (JSON: Vec<MemoryItem>) | Reads active-role memory store |
 | `list_available_models` | none | `string` (JSON: Vec<ModelInfo>) | Scans configured local models directory |
 | `get_screenshot_metadata` | none | `string` (JSON) | Returns screenshot settings and capture availability |
 | `read_image_artifact` | `path: string` | `string` data URL | Previews generated image artifacts under configured output dir |
-| `get_persona_content` | `profile: string` | `string` (raw JSON) | Reads `personality/{profile}.json` |
+| `get_persona_content` | `profile: string` | `string` (raw JSON) | Reads user role JSON if present, otherwise bundled `personality/{profile}.json` |
 
 ### Mutate Commands
 
 | Command | Args | Returns | Notes |
 |---|---|---|---|
 | `update_settings` | `updates: object` | `string` "ok" | Writes `config/user.toml`. Recognized keys include theme, remote API, local LLM backend/model/auto-load/commands, and persona rewrite toggles |
-| `save_persona_content` | `profile: string, content: string` | `string` "ok" | Validates JSON against PersonaConfig schema before writing |
-| `create_memory` | `kind: string, content: string, source?: string, pinned?: boolean` | `string` (JSON: MemoryItem) | Adds a manual memory |
+| `save_persona_content` | `profile: string, content: string` | `string` "ok" | Validates JSON against PersonaConfig schema before writing `usr/roles/{profile}.json` |
+| `role_storage_paths` | `profile: string` | `string` (JSON: `{role, memory}`) | Displays editable role and memory paths |
+| `set_active_role` | `profile: string` | `string` (JSON: `{active_role}`) | Writes `[personality] default_profile` |
+| `delete_role` | `profile: string, confirmation: string` | `string` "ok" | Requires exact `我确认删除{profile}`; cannot delete `default` |
+| `generate_role_profile` | `seed: RoleGenerationSeed` | `string` (raw JSON) | Uses configured remote chat API to generate a role JSON draft |
+| `create_memory` | `kind: string, content: string, source?: string, pinned?: boolean` | `string` (JSON: MemoryItem) | Adds a manual memory for the active role |
 | `update_memory` | `id: string, patch: object` | `string` (JSON: MemoryItem) | Edits, pins, archives, or restores memory |
 | `delete_memory` | `id: string` | `string` "ok" | Deletes a memory |
 | `send_chat_message` | `message: string, history: ChatMessage[]` | `string` (JSON: `{content, rewritten, generated_image?, images?, image_prompt?}`) | Main chat pipeline plus chat image generation. `history` is array of `{role, content}` |
@@ -214,7 +229,7 @@ interface ConfigSnapshot {
 [local_llm]          # backend, base_url, model, enabled, auto_load, models_dir, commands
 [persona_rewrite]    # enabled, temperature, max_tokens, prompt_template
 [models.default_chat]
-[personality]        # default_profile
+[personality]        # default_profile, active role id
 [observability]      # job_timeline, prompt_logs, token_usage, vram_logs
 [multimodal.screenshot]
 [multimodal.comfyui]
@@ -243,7 +258,7 @@ Overrides `default.toml` via deep merge. Contains secrets (API keys). Format is 
 | `workers/mock.rs` | 86 | MockWorker for testing |
 | `workers/remote_api.rs` | 208 | DeepSeek/OpenAI API worker, finish_reason logging |
 | `workers/local_llm.rs` | 175 | llama.cpp/vLLM HTTP worker, reasoning_content fallback |
-| `personality/mod.rs` | 169 | PromptAssembler, PersonaRewriter, PersonaConfig, persona editor I/O |
+| `personality/mod.rs` | — | PromptAssembler, PersonaRewriter, PersonaConfig, role editor I/O |
 | `observability.rs` | 27 | prompt_log, token_usage logging helpers |
 | `runtime.rs` | 6 | Placeholder |
 
@@ -253,7 +268,7 @@ Overrides `default.toml` via deep merge. Contains secrets (API keys). Format is 
 
 | File | Lines | Content |
 |---|---|---|
-| `src/main.ts` | — | App bootstrap, chat UI, settings panel, persona editor, companion view |
+| `src/main.ts` | — | App bootstrap, chat UI, settings panel, role manager, memory panel, companion view |
 | `src/style.css` | — | Theme tokens (`:root`, `[data-theme="light"]`), layout, chat, companion styles |
 | `index.html` | — | Root HTML with JS error catcher |
 | `public/companion-cat-placeholder.png` | — | Anime cat companion placeholder |
@@ -353,10 +368,10 @@ Or via env var: `export DEEPSEEK_API_KEY=sk-...`
 - **Fix applied**: `max_tokens` default raised to 2048. `LocalLlmWorker` falls back to `reasoning_content` when `content` is empty.
 - **Better fix**: Start llama-server with `--reasoning off` to skip thinking entirely. This roughly doubles rewrite speed.
 
-### DeepSeek Content Filter
-- **Problem**: System prompts containing identity assignment ("You are X") or role-play instructions trigger DeepSeek's safety filter, returning empty responses.
-- **Fix applied**: System prompt is now minimal: `"You are a helpful assistant. Respond concisely and precisely."`
-- **Architecture decision**: Style/personality is handled by the local rewrite layer, not by DeepSeek's system prompt.
+### Remote Role Prompting
+- **Current behavior**: `PromptAssembler` injects base rules, active role fields, and relevant active-role memories into the chat prompt.
+- **Design constraint**: Role JSON contains character traits only. Global rules such as punctuation policy, parenthetical action syntax, memory conflict priority, and safety/factual priority stay in `PromptAssembler`.
+- **Rewrite path**: If persona rewrite is enabled, the local rewrite prompt also uses active role fields, but failure degrades to the remote response.
 
 ### Wayland GBM Buffer Errors
 - **Problem**: WebKitGTK on KDE Plasma + Wayland fails to create GBM buffers.
@@ -417,13 +432,16 @@ making changes, then inspect only the files relevant to the selected next task.
 Read these first:
 1. [AGENTS.md](/home/eulcau/CXTX/hestia/AGENTS.md)
 2. [docs/HANDOFF.md](/home/eulcau/CXTX/hestia/docs/HANDOFF.md), §10 and §11
-3. [docs/ui-interface-contract.md](/home/eulcau/CXTX/hestia/docs/ui-interface-contract.md), §3.4 and §12.1
-4. [docs/desktop-companion.md](/home/eulcau/CXTX/hestia/docs/desktop-companion.md), §3.3 and §4
+3. [docs/ui-interface-contract.md](/home/eulcau/CXTX/hestia/docs/ui-interface-contract.md), §2, §12.2, and §12.3
+4. [docs/roles.md](/home/eulcau/CXTX/hestia/docs/roles.md)
+5. [docs/memory.md](/home/eulcau/CXTX/hestia/docs/memory.md)
+6. [docs/desktop-companion.md](/home/eulcau/CXTX/hestia/docs/desktop-companion.md), §3.3 and §4
 
 Likely first files to inspect:
 - [frontend/src/main.ts](/home/eulcau/CXTX/hestia/frontend/src/main.ts): main UI, companion view, companion dialogue view, initiative timer, bounds persistence
 - [src-tauri/src/lib.rs](/home/eulcau/CXTX/hestia/src-tauri/src/lib.rs): Tauri commands, tray, close/hide lifecycle, companion visibility events
 - [src-tauri/src/memory.rs](/home/eulcau/CXTX/hestia/src-tauri/src/memory.rs): manual memory storage, retrieval, prompt context formatting
+- [src-tauri/src/personality/mod.rs](/home/eulcau/CXTX/hestia/src-tauri/src/personality/mod.rs): role schema, role file I/O, prompt assembly
 - [src-tauri/src/config.rs](/home/eulcau/CXTX/hestia/src-tauri/src/config.rs): `ConfigSnapshot`, `update_settings`, `[companion.window]`
 - [config/default.toml](/home/eulcau/CXTX/hestia/config/default.toml): default companion bounds and runtime settings
 - [src-tauri/tauri.conf.json](/home/eulcau/CXTX/hestia/src-tauri/tauri.conf.json): `main`, `companion`, and `companion_dialog` window definitions
@@ -435,10 +453,11 @@ Stable companion contracts:
 - `companion-dialog-visible-changed` is the source of truth for Bubble button state and dialogue request cleanup.
 - `companion-avatar-event` carries avatar renderer events: `expression`, `motion`, `speak_start`, `speak_stop`, `look_at`, and `idle`.
 - Companion position and size are restored from `[companion.window]` and persisted through `update_settings`.
-- User-managed memory is stored under `usr/memory/memories.json` in development and injected as bounded prompt context. Archived memories are excluded; pinned memories are preferred.
+- User-managed memory is stored under `usr/memory/{role_id}/memories.json` in development and injected as bounded prompt context. Archived memories are excluded; pinned memories are preferred.
+- User-created roles are stored under `usr/roles/{id}.json` in development. The bundled `default` role remains in `personality/default.json`.
 
 Recommended next task:
-- Harden memory for packaged builds by moving `usr/memory` to the system user data directory, then add memory storage/retrieval tests. Do not add Plugin Boundary work until memory state ownership is stable.
+- Harden role and memory storage for packaged builds by moving `usr/roles` and `usr/memory` to the system user data directory, then add role/memory storage tests. Do not add Plugin Boundary work until memory state ownership is stable.
 
 Validation commands:
 ```bash
@@ -474,4 +493,6 @@ npm run build
 | [docs/project-structure.md](/home/eulcau/CXTX/hestia/docs/project-structure.md) | Directory layout |
 | [docs/ide.md](/home/eulcau/CXTX/hestia/docs/ide.md) | JetBrains IDE setup |
 | [docs/desktop-companion.md](/home/eulcau/CXTX/hestia/docs/desktop-companion.md) | Desktop companion avatar rendering design (Live2D, Spine, Unity+VRM) |
+| [docs/roles.md](/home/eulcau/CXTX/hestia/docs/roles.md) | Role profile schema, storage, generation, deletion, and active-role memory behavior |
+| [docs/memory.md](/home/eulcau/CXTX/hestia/docs/memory.md) | Long-term memory storage, retrieval, and prompt injection |
 | [AGENTS.md](/home/eulcau/CXTX/hestia/AGENTS.md) | Codex project rules |

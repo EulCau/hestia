@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-10 (Memory core MVP)
+**Last updated:** 2026-07-10 (Role management and role-scoped memory)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -62,12 +62,21 @@ Errors:   never
 Usage:    Used by persona-related UI flows and reserved for future selector expansion.
 ```
 
+#### `list_roles`
+```
+Arguments: none
+Returns:  string (JSON) — RoleProfile[]
+Errors:   string if role files cannot be read
+Usage:    Used by the Roles panel. Bundled default role lives in personality/default.json;
+          user-created roles live in usr/roles/{id}.json.
+```
+
 #### `list_memories`
 ```
 Arguments: { query?: string|null, includeArchived?: boolean }
 Returns:  string (JSON) — MemoryItem[]
 Errors:   string if local memory storage cannot be read
-Usage:    Used by the Memory panel. Storage is usr/memory/memories.json in development.
+Usage:    Used by the Memory panel. Storage is usr/memory/{active_role}/memories.json in development.
 ```
 
 #### `list_available_models`
@@ -204,7 +213,7 @@ Async:    YES. This is the primary long-running operation.
             1. If message starts with "\image " or "/image ", run image generation directly
             2. Otherwise ask the remote chat worker for strict JSON image-intent routing
             3. If should_generate=true, run ImageGeneration through Scheduler
-            4. If should_generate=false or routing fails, PromptAssembler loads persona JSON
+            4. If should_generate=false or routing fails, PromptAssembler loads active role JSON
             5. Memory retrieval loads pinned/relevant memories and injects a bounded context message
             6. RemoteApiWorker.infer() → HTTP POST to DeepSeek
             7. [if rewrite enabled] checks local_llm_available
@@ -224,7 +233,7 @@ UI State:
 Arguments: { kind: string, content: string, source?: string|null, pinned?: boolean|null }
 Returns:  string (JSON) — MemoryItem
 Errors:   string if content is empty or storage cannot be written
-Side effect: Appends to usr/memory/memories.json.
+Side effect: Appends to usr/memory/{active_role}/memories.json.
 ```
 
 #### `update_memory`
@@ -239,7 +248,7 @@ Arguments: { id: string, patch: {
 } }
 Returns:  string (JSON) — MemoryItem
 Errors:   string if id is missing, content is empty, or storage cannot be written
-Side effect: Updates usr/memory/memories.json.
+Side effect: Updates usr/memory/{active_role}/memories.json.
 ```
 
 #### `delete_memory`
@@ -247,7 +256,39 @@ Side effect: Updates usr/memory/memories.json.
 Arguments: { id: string }
 Returns:  string "ok"
 Errors:   string if id is missing or storage cannot be written
-Side effect: Removes the memory from usr/memory/memories.json.
+Side effect: Removes the memory from usr/memory/{active_role}/memories.json.
+```
+
+#### `role_storage_paths`
+```
+Arguments: { profile: string }
+Returns:  string (JSON) — { role: string, memory: string }
+Errors:   never
+Usage:    Displays editable role and memory config file paths in the frontend.
+```
+
+#### `set_active_role`
+```
+Arguments: { profile: string }
+Returns:  string (JSON) — { active_role: string }
+Errors:   string if profile does not exist or config cannot be written
+Side effect: Writes [personality] default_profile in config/user.toml.
+```
+
+#### `delete_role`
+```
+Arguments: { profile: string, confirmation: string }
+Returns:  string "ok"
+Errors:   string if confirmation is not exactly "我确认删除{profile}", if profile is default, or if delete fails
+Side effect: Removes usr/roles/{profile}.json. If the deleted role was active, resets active role to default.
+```
+
+#### `generate_role_profile`
+```
+Arguments: { seed: Partial<RoleProfile> }
+Returns:  string (JSON) — RoleProfile
+Errors:   string if model inference fails or returned JSON does not match the role schema
+Usage:    Uses the configured remote chat worker to complete missing role fields from identity/species/personality.
 ```
 
 #### `submit_test_job`
@@ -952,7 +993,7 @@ The frontend maintains a `chatHistory` array. Each successful exchange appends `
 #### `get_persona_content`
 ```
 Arguments: { profile: string }  — e.g. "default"
-Returns:  string — raw JSON content of usr/personality/{profile}.json if present,
+Returns:  string — raw JSON content of usr/roles/{profile}.json if present,
           otherwise bundled personality/{profile}.json
 Errors:   string if file not found or unreadable
 ```
@@ -962,7 +1003,7 @@ Errors:   string if file not found or unreadable
 Arguments: { profile: string, content: string }
 Returns:  string "ok"
 Errors:   string if JSON invalid or write fails
-Side effect: Validates against PersonaConfig, then writes usr/personality/{profile}.json.
+Side effect: Validates against PersonaConfig, then writes usr/roles/{profile}.json.
              The bundled personality/{profile}.json remains the default template.
              usr/ is gitignored for development and should map to the system user data
              directory in packaged builds.
@@ -971,7 +1012,7 @@ Side effect: Validates against PersonaConfig, then writes usr/personality/{profi
 ### 9.3 Persona Editor UI
 
 Sidebar button "Persona" (pencil icon) opens a modal with:
-- Textarea pre-loaded with current persona JSON
+- Textarea or form pre-loaded with current role JSON
 - "Load" button — re-reads from disk
 - "Save" button — validates JSON schema, writes a user override
 - Changes take effect on next `send_chat_message` call (PromptAssembler loads fresh on each message)
@@ -1002,10 +1043,34 @@ interface MemoryItem {
 Memory storage is local user state:
 
 ```text
-usr/memory/memories.json
+usr/memory/{active_role}/memories.json
 ```
 
-The Memory panel is manual. The model does not automatically create memories in the MVP. Chat and companion initiative requests retrieve a small set of pinned/relevant non-archived memories and inject them as a separate system context message. Current user input has priority over memory if they conflict.
+The Memory panel is manual. The model does not automatically create memories in the MVP. Chat and companion initiative requests retrieve a small set of pinned/relevant non-archived memories for the active role and inject them as a separate system context message. Current user input has priority over memory if they conflict.
+
+### 9.6 Role Profiles
+
+```typescript
+interface RoleProfile {
+  schema_version: 2;
+  id: string;
+  name: string;
+  aliases: string[];
+  identity: string;
+  species: string;
+  appearance: string;
+  personality: string;
+  language_style: string;
+  scenario: string;
+  tone: string;
+  initiative: number;
+  humor: number;
+  verbosity: string;
+  pinned: boolean;
+}
+```
+
+Role files describe character traits only. Base prompt rules, including halfwidth Chinese punctuation and optional parenthetical actions/states, are injected by `PromptAssembler::build_system_prompt()` and must not be duplicated into role personality files. The active role id is `ConfigSnapshot.personality.default_profile`.
 
 
 ---

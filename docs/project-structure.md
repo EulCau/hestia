@@ -75,7 +75,9 @@ Workers should not own global application state.
 
 ### `src-tauri/src/personality`
 
-Persona schema, prompt assembly, style rules, few-shot examples, and optional persona rewriting.
+Role/persona schema, prompt assembly, base prompt rules, few-shot examples, and optional persona rewriting.
+
+Global behavior constraints, such as halfwidth Chinese punctuation or parenthetical action syntax, belong in the prompt assembler. They should not be duplicated into individual role JSON files.
 
 Personality is application state, not model state.
 
@@ -161,14 +163,14 @@ Secrets should be loaded from `.env` or OS keyring later.
 
 ### `personality`
 
-Persona presets. These should be importable, exportable, versioned, and editable through GUI later.
+Bundled role presets. User-created role files are stored under `usr/roles/` in development.
 
 ### `usr`
 
 Development-time local user data. This directory is gitignored. Current uses:
 
-- `usr/personality/`: persona overrides saved by the Persona editor
-- `usr/memory/`: manual long-term memory store
+- `usr/roles/`: user-created role JSON files saved by the Roles panel
+- `usr/memory/{role_id}/`: role-specific long-term memory files
 
 Packaged builds should map this data to the operating system user data directory instead of the repository path.
 

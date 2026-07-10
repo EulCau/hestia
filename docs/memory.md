@@ -1,7 +1,7 @@
 # Memory Core
 
 **Status:** MVP implemented
-**Storage:** `usr/memory/memories.json` in development. Packaged builds should map this to the system user data directory.
+**Storage:** `usr/memory/{role_id}/memories.json` in development. Packaged builds should map this to the system user data directory.
 
 ---
 
@@ -47,10 +47,12 @@ Kinds are normalized to `fact`, `preference`, `project`, `relationship`, or `not
 Development storage path:
 
 ```text
-usr/memory/memories.json
+usr/memory/{role_id}/memories.json
 ```
 
 The `usr/` directory is gitignored. This keeps user memory out of version control and matches the existing local override pattern for persona files.
+
+Each role has its own memory file. The legacy development path `usr/memory/memories.json` is still read as a fallback for the `default` role, but new writes use the role-specific directory.
 
 Packaging requirement:
 
@@ -64,7 +66,7 @@ The storage module is centralized in `src-tauri/src/memory.rs`, so the packaged 
 
 ## 4. Retrieval
 
-Chat and companion initiative requests retrieve a small memory set before prompt assembly:
+Chat and companion initiative requests retrieve a small memory set for the active role before prompt assembly:
 
 - normal chat: up to 8 memories
 - companion initiative: up to 6 memories

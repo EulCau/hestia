@@ -162,12 +162,16 @@ Completed:
 - [x] Header action for user-initiated topic opening in window mode
 - [x] Backend guard so automatic proactive speech is reserved for future desktop companion triggers
 
-## Phase 7. Memory Core (Completed MVP)
+## Phase 7. Roles and Memory Core (Completed MVP)
 
-Goal: provide explicit, user-controlled long-term memory before expanding the plugin surface.
+Goal: provide explicit, user-controlled character roles and long-term memory before expanding the plugin surface.
 
 Completed:
+- [x] Role schema and role management UI
+- [x] Role generation through the configured chat API
+- [x] Active role selection through config
 - [x] Local memory schema and storage under ignored `usr/memory/`
+- [x] Per-role memory isolation
 - [x] Manual memory CRUD commands
 - [x] Memory management UI
 - [x] Lightweight pinned/recent/keyword retrieval
@@ -177,12 +181,12 @@ Deferred:
 - [ ] Automatic memory extraction
 - [ ] User confirmation workflow for model-suggested memories
 - [ ] Semantic/vector retrieval
-- [ ] Packaged-build migration to system user data directory
+- [ ] Packaged-build migration for roles and memory to system user data directory
 
 Deliverable:
 
 ```text
-User-managed memories -> retrieved context -> chat/companion responses
+Active role + role-managed memories -> retrieved context -> chat/companion responses
 ```
 
 ## Phase 7.5. Plugin Boundary (defer until companion events and memory state stabilize)

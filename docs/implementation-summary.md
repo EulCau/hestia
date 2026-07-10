@@ -1,7 +1,7 @@
 # Hestia Implementation Summary
 
 **Date:** 2026-06-17
-**Current Phase:** 7 memory core MVP + 8 Live2D companion adapter MVP
+**Current Phase:** 7 roles + memory core MVP, 8 Live2D companion adapter MVP
 
 ---
 
@@ -51,8 +51,8 @@
 | Component | File | Status |
 |---|---|---|
 | Remote API worker (DeepSeek/OpenAI) | `src/workers/remote_api.rs` | Done |
-| Prompt assembler (system prompt + persona) | `src/personality/mod.rs` | Done |
-| Persona config loader | `src/personality/mod.rs` | Done |
+| Prompt assembler (system prompt + active role) | `src/personality/mod.rs` | Done |
+| Role config loader | `src/personality/mod.rs` | Done |
 | `send_chat_message` Tauri command | `src/lib.rs` | Done |
 | Fallback to mock worker when no API key | `src/lib.rs` | Done |
 
@@ -101,9 +101,20 @@
 | Memory management UI | `frontend/src/main.ts` | Done |
 | Prompt memory context injection | `src-tauri/src/lib.rs`, `src-tauri/src/personality/mod.rs` | Done |
 
-Storage is currently `usr/memory/memories.json`, which is gitignored. Packaged builds should move this to the system user data directory.
+Storage is currently `usr/memory/{role_id}/memories.json`, which is gitignored. Packaged builds should move this to the system user data directory.
 
-The MVP is manual only: the user creates, edits, pins, archives, and deletes memories. The model does not automatically write long-term memory.
+The MVP is manual only: the user creates, edits, pins, archives, and deletes memories. The model does not automatically write long-term memory. Memories are scoped to the active role.
+
+### 2.7 Role Management
+
+| Component | File | Status |
+|---|---|---|
+| Role schema and prompt assembly | `src-tauri/src/personality/mod.rs` | Done |
+| Role management commands | `src-tauri/src/lib.rs` | Done |
+| Role management UI | `frontend/src/main.ts` | Done |
+| Default role template | `personality/default.json` | Done |
+
+User-created roles are stored in `usr/roles/{id}.json`. The active role is `personality.default_profile` in config. Base prompt rules such as halfwidth Chinese punctuation and optional parenthetical actions are injected by the PromptAssembler rather than stored in role personality files.
 
 ---
 
@@ -221,11 +232,11 @@ config/
   user.toml                User overrides (gitignored)
 
 personality/
-  default.json             Bundled default persona template
+  default.json             Bundled default role template
 
 usr/
-  personality/             Local user persona overrides (gitignored; packaged builds should use system user data)
-  memory/                  Local user memory store (gitignored; packaged builds should use system user data)
+  roles/                   Local user role files (gitignored; packaged builds should use system user data)
+  memory/                  Local per-role memory store (gitignored; packaged builds should use system user data)
 
 assets/
   companion-cat-placeholder.png  Original generated cat placeholder
@@ -265,13 +276,13 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 ./frontend/node_modules/.bin/tauri dev
 | 4 | GPU Resource Manager / Model Auto-Load | Done |
 | 5 | Multimodal (screenshots, ComfyUI, vision) | Done (MVP) |
 | 6 | Initiative system | Done (MVP) |
-| 7 | Memory core | Done (MVP) |
+| 7 | Roles + memory core | Done (MVP) |
 | 8 | Desktop companion window | Done (hardened MVP + lifecycle polish) |
 | 7.5 | Plugin boundary + packaging | Pending |
 
 Phase 8 now has the second-window lifecycle, placeholder avatar adapter, Live2D adapter MVP, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, persisted companion position/size, synchronized dialogue visibility lifecycle, and companion avatar events.
 
-Recommended next step: stabilize memory storage path for packaged builds, then resume Plugin Boundary. VRM remains a later rendering upgrade.
+Recommended next step: stabilize role/memory storage paths for packaged builds, then resume Plugin Boundary. VRM remains a later rendering upgrade.
 
 Resume note for a new conversation:
 - Start from [docs/HANDOFF.md](/home/eulcau/CXTX/hestia/docs/HANDOFF.md), §10 and §11.
