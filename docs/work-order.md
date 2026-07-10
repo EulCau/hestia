@@ -162,7 +162,30 @@ Completed:
 - [x] Header action for user-initiated topic opening in window mode
 - [x] Backend guard so automatic proactive speech is reserved for future desktop companion triggers
 
-## Phase 7. Plugin Boundary (defer until companion events stabilize)
+## Phase 7. Memory Core (Completed MVP)
+
+Goal: provide explicit, user-controlled long-term memory before expanding the plugin surface.
+
+Completed:
+- [x] Local memory schema and storage under ignored `usr/memory/`
+- [x] Manual memory CRUD commands
+- [x] Memory management UI
+- [x] Lightweight pinned/recent/keyword retrieval
+- [x] Prompt context injection for chat and companion initiative
+
+Deferred:
+- [ ] Automatic memory extraction
+- [ ] User confirmation workflow for model-suggested memories
+- [ ] Semantic/vector retrieval
+- [ ] Packaged-build migration to system user data directory
+
+Deliverable:
+
+```text
+User-managed memories -> retrieved context -> chat/companion responses
+```
+
+## Phase 7.5. Plugin Boundary (defer until companion events and memory state stabilize)
 
 Goal: prepare future expansion without implementing all plugins.
 

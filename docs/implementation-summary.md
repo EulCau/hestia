@@ -1,7 +1,7 @@
 # Hestia Implementation Summary
 
 **Date:** 2026-06-17
-**Current Phase:** 8 avatar settings + Live2D companion adapter MVP
+**Current Phase:** 7 memory core MVP + 8 Live2D companion adapter MVP
 
 ---
 
@@ -91,6 +91,19 @@
 | Prompt logs (assembled prompts) | Done |
 | Token usage logs | Done |
 | Structured tracing output | Done |
+
+### 2.6 Memory Core
+
+| Component | File | Status |
+|---|---|---|
+| Memory schema and storage | `src-tauri/src/memory.rs` | Done |
+| Manual memory commands | `src-tauri/src/lib.rs` | Done |
+| Memory management UI | `frontend/src/main.ts` | Done |
+| Prompt memory context injection | `src-tauri/src/lib.rs`, `src-tauri/src/personality/mod.rs` | Done |
+
+Storage is currently `usr/memory/memories.json`, which is gitignored. Packaged builds should move this to the system user data directory.
+
+The MVP is manual only: the user creates, edits, pins, archives, and deletes memories. The model does not automatically write long-term memory.
 
 ---
 
@@ -188,6 +201,7 @@ src-tauri/
       remote_api.rs        DeepSeek/OpenAI API worker
     personality/
       mod.rs               Prompt assembler, persona config
+    memory.rs              User-managed long-term memory storage and retrieval
     observability.rs       Prompt/token logging
     runtime.rs             Placeholder
 
@@ -211,6 +225,7 @@ personality/
 
 usr/
   personality/             Local user persona overrides (gitignored; packaged builds should use system user data)
+  memory/                  Local user memory store (gitignored; packaged builds should use system user data)
 
 assets/
   companion-cat-placeholder.png  Original generated cat placeholder
@@ -250,12 +265,13 @@ WEBKIT_DISABLE_COMPOSITING_MODE=1 ./frontend/node_modules/.bin/tauri dev
 | 4 | GPU Resource Manager / Model Auto-Load | Done |
 | 5 | Multimodal (screenshots, ComfyUI, vision) | Done (MVP) |
 | 6 | Initiative system | Done (MVP) |
+| 7 | Memory core | Done (MVP) |
 | 8 | Desktop companion window | Done (hardened MVP + lifecycle polish) |
-| 7 | Plugin boundary + packaging | Pending |
+| 7.5 | Plugin boundary + packaging | Pending |
 
 Phase 8 now has the second-window lifecycle, placeholder avatar adapter, Live2D adapter MVP, show/hide control, tray controls, companion-owned initiative timer, hover toolbar, local dialogue bubble, persisted companion position/size, synchronized dialogue visibility lifecycle, and companion avatar events.
 
-Recommended next step: run visual QA on Live2D motion/expression mapping before Plugin Boundary. VRM remains a later rendering upgrade.
+Recommended next step: stabilize memory storage path for packaged builds, then resume Plugin Boundary. VRM remains a later rendering upgrade.
 
 Resume note for a new conversation:
 - Start from [docs/HANDOFF.md](/home/eulcau/CXTX/hestia/docs/HANDOFF.md), §10 and §11.

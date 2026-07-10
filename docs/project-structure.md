@@ -163,6 +163,15 @@ Secrets should be loaded from `.env` or OS keyring later.
 
 Persona presets. These should be importable, exportable, versioned, and editable through GUI later.
 
+### `usr`
+
+Development-time local user data. This directory is gitignored. Current uses:
+
+- `usr/personality/`: persona overrides saved by the Persona editor
+- `usr/memory/`: manual long-term memory store
+
+Packaged builds should map this data to the operating system user data directory instead of the repository path.
+
 ### `plugins`
 
 Reserved plugin directory. First version should define the contract but keep plugins disabled by default.

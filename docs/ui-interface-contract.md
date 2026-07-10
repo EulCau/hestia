@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-06-17 (User persona overrides)
+**Last updated:** 2026-07-10 (Memory core MVP)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -60,6 +60,14 @@ Arguments: none
 Returns:  Vec<String> — e.g. ["default"]
 Errors:   never
 Usage:    Used by persona-related UI flows and reserved for future selector expansion.
+```
+
+#### `list_memories`
+```
+Arguments: { query?: string|null, includeArchived?: boolean }
+Returns:  string (JSON) — MemoryItem[]
+Errors:   string if local memory storage cannot be read
+Usage:    Used by the Memory panel. Storage is usr/memory/memories.json in development.
 ```
 
 #### `list_available_models`
@@ -197,17 +205,49 @@ Async:    YES. This is the primary long-running operation.
             2. Otherwise ask the remote chat worker for strict JSON image-intent routing
             3. If should_generate=true, run ImageGeneration through Scheduler
             4. If should_generate=false or routing fails, PromptAssembler loads persona JSON
-            5. RemoteApiWorker.infer() → HTTP POST to DeepSeek
-            6. [if rewrite enabled] checks local_llm_available
-            7. [if rewrite enabled] PersonaRewriter builds prompt
-            8. [if rewrite enabled] acquires ResourceManager local model slot
-            9. [if rewrite enabled] LocalLlmWorker.infer() → HTTP POST to llama.cpp
-            10. [if rewrite enabled] releases ResourceManager local model slot
-            11. Returns final JSON string
+            5. Memory retrieval loads pinned/relevant memories and injects a bounded context message
+            6. RemoteApiWorker.infer() → HTTP POST to DeepSeek
+            7. [if rewrite enabled] checks local_llm_available
+            8. [if rewrite enabled] PersonaRewriter builds prompt
+            9. [if rewrite enabled] acquires ResourceManager local model slot
+            10. [if rewrite enabled] LocalLlmWorker.infer() → HTTP POST to llama.cpp
+            11. [if rewrite enabled] releases ResourceManager local model slot
+            12. Returns final JSON string
 UI State:
   BEFORE:  disable textarea and send/image buttons, show "Thinking..." or "Generating image..."
   AFTER:   remove placeholder, render response and generated image previews, re-enable input
   ON ERR:  remove placeholder, render error message, re-enable input
+```
+
+#### `create_memory`
+```
+Arguments: { kind: string, content: string, source?: string|null, pinned?: boolean|null }
+Returns:  string (JSON) — MemoryItem
+Errors:   string if content is empty or storage cannot be written
+Side effect: Appends to usr/memory/memories.json.
+```
+
+#### `update_memory`
+```
+Arguments: { id: string, patch: {
+  kind?: string,
+  content?: string,
+  source?: string,
+  confidence?: number,
+  pinned?: boolean,
+  archived?: boolean
+} }
+Returns:  string (JSON) — MemoryItem
+Errors:   string if id is missing, content is empty, or storage cannot be written
+Side effect: Updates usr/memory/memories.json.
+```
+
+#### `delete_memory`
+```
+Arguments: { id: string }
+Returns:  string "ok"
+Errors:   string if id is missing or storage cannot be written
+Side effect: Removes the memory from usr/memory/memories.json.
 ```
 
 #### `submit_test_job`
@@ -941,6 +981,31 @@ Sidebar button "Persona" (pencil icon) opens a modal with:
 ```
 local_llm.model default changed to "qwen3-8b"
 ```
+
+### 9.5 Memory Core
+
+```typescript
+interface MemoryItem {
+  id: string;
+  kind: "fact" | "preference" | "project" | "relationship" | "note" | string;
+  content: string;
+  source: "chat" | "user" | "system" | string;
+  confidence: number;
+  created_at: number;
+  updated_at: number;
+  last_used_at?: number | null;
+  pinned: boolean;
+  archived: boolean;
+}
+```
+
+Memory storage is local user state:
+
+```text
+usr/memory/memories.json
+```
+
+The Memory panel is manual. The model does not automatically create memories in the MVP. Chat and companion initiative requests retrieve a small set of pinned/relevant non-archived memories and inject them as a separate system context message. Current user input has priority over memory if they conflict.
 
 
 ---

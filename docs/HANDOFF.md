@@ -91,6 +91,7 @@ All commands are registered in `src/lib.rs` invoke_handler. The frontend calls t
 | `get_app_info` | none | `string` (JSON: name, version, phase) | Synchronous |
 | `get_config_snapshot` | none | `string` (JSON: ConfigSnapshot) | See §3 for shape |
 | `list_personas` | none | `Vec<String>` | Reads `personality/` directory |
+| `list_memories` | `query?: string, includeArchived?: boolean` | `string` (JSON: Vec<MemoryItem>) | Reads local user memory store |
 | `list_available_models` | none | `string` (JSON: Vec<ModelInfo>) | Scans configured local models directory |
 | `get_screenshot_metadata` | none | `string` (JSON) | Returns screenshot settings and capture availability |
 | `read_image_artifact` | `path: string` | `string` data URL | Previews generated image artifacts under configured output dir |
@@ -102,6 +103,9 @@ All commands are registered in `src/lib.rs` invoke_handler. The frontend calls t
 |---|---|---|---|
 | `update_settings` | `updates: object` | `string` "ok" | Writes `config/user.toml`. Recognized keys include theme, remote API, local LLM backend/model/auto-load/commands, and persona rewrite toggles |
 | `save_persona_content` | `profile: string, content: string` | `string` "ok" | Validates JSON against PersonaConfig schema before writing |
+| `create_memory` | `kind: string, content: string, source?: string, pinned?: boolean` | `string` (JSON: MemoryItem) | Adds a manual memory |
+| `update_memory` | `id: string, patch: object` | `string` (JSON: MemoryItem) | Edits, pins, archives, or restores memory |
+| `delete_memory` | `id: string` | `string` "ok" | Deletes a memory |
 | `send_chat_message` | `message: string, history: ChatMessage[]` | `string` (JSON: `{content, rewritten, generated_image?, images?, image_prompt?}`) | Main chat pipeline plus chat image generation. `history` is array of `{role, content}` |
 | `generate_test_image` | `prompt: string, negativePrompt?: string` | `string` (JSON: `{prompt_id, images, workflow_path}`) | Explicit ComfyUI test generation |
 | `recognize_image` | `path: string, prompt?: string` | `string` (JSON: `{content, model, source, image_path}`) | Kimi vision recognition for local uploads; future screenshots can reuse the internal helper |
@@ -393,12 +397,14 @@ The companion window starts hidden. The main window controls it with `set_compan
 
 | Phase | Description | Key New Components |
 |---|---|---|
+| Memory polish | Memory storage hardening | packaged user data dir, import/export, tests |
 | 8 polish | Companion polish | click-through body |
 | Live2D polish | Animated avatar | expression/motion tuning, visual QA, mouse tracking polish |
-| 7 | Plugin Boundary | Plugin manifest, permission model, event contract |
+| 7.5 | Plugin Boundary | Plugin manifest, permission model, event contract |
 
 Do not do yet:
 - Do not implement Plugin Boundary before the companion event shape settles.
+- Do not add automatic memory writes before a user confirmation workflow exists.
 - Do not add VRM assets until the Live2D behavior is stable.
 - Do not let the main chat window use automatic proactive triggers.
 - Do not call `request_initiative_message` with `trigger = "timer"` or `window_timer` for automatic speech; backend will block it via `non_companion_trigger`.
@@ -417,6 +423,7 @@ Read these first:
 Likely first files to inspect:
 - [frontend/src/main.ts](/home/eulcau/CXTX/hestia/frontend/src/main.ts): main UI, companion view, companion dialogue view, initiative timer, bounds persistence
 - [src-tauri/src/lib.rs](/home/eulcau/CXTX/hestia/src-tauri/src/lib.rs): Tauri commands, tray, close/hide lifecycle, companion visibility events
+- [src-tauri/src/memory.rs](/home/eulcau/CXTX/hestia/src-tauri/src/memory.rs): manual memory storage, retrieval, prompt context formatting
 - [src-tauri/src/config.rs](/home/eulcau/CXTX/hestia/src-tauri/src/config.rs): `ConfigSnapshot`, `update_settings`, `[companion.window]`
 - [config/default.toml](/home/eulcau/CXTX/hestia/config/default.toml): default companion bounds and runtime settings
 - [src-tauri/tauri.conf.json](/home/eulcau/CXTX/hestia/src-tauri/tauri.conf.json): `main`, `companion`, and `companion_dialog` window definitions
@@ -428,9 +435,10 @@ Stable companion contracts:
 - `companion-dialog-visible-changed` is the source of truth for Bubble button state and dialogue request cleanup.
 - `companion-avatar-event` carries avatar renderer events: `expression`, `motion`, `speak_start`, `speak_stop`, `look_at`, and `idle`.
 - Companion position and size are restored from `[companion.window]` and persisted through `update_settings`.
+- User-managed memory is stored under `usr/memory/memories.json` in development and injected as bounded prompt context. Archived memories are excluded; pinned memories are preferred.
 
 Recommended next task:
-- Polish Live2D expression/motion mapping and visual QA against the existing `AvatarAdapter.onEvent(...)` contract. Do not add Plugin Boundary work until the Live2D adapter behavior is stable.
+- Harden memory for packaged builds by moving `usr/memory` to the system user data directory, then add memory storage/retrieval tests. Do not add Plugin Boundary work until memory state ownership is stable.
 
 Validation commands:
 ```bash
