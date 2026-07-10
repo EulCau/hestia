@@ -114,8 +114,9 @@ All commands are registered in `src/lib.rs` invoke_handler. The frontend calls t
 |---|---|---|---|
 | `update_settings` | `updates: object` | `string` "ok" | Writes `config/user.toml`. Recognized keys include theme, remote API, local LLM backend/model/auto-load/commands, and persona rewrite toggles |
 | `save_persona_content` | `profile: string, content: string` | `string` "ok" | Validates JSON against PersonaConfig schema before writing `usr/roles/{profile}.json` |
-| `role_storage_paths` | `profile: string` | `string` (JSON: `{role, memory}`) | Displays editable role and memory paths |
-| `set_active_role` | `profile: string` | `string` (JSON: `{active_role}`) | Writes `[personality] default_profile` |
+| `role_storage_paths` | `profile: string` | `string` (JSON: `{role, assets, memory}`) | Displays editable role, asset, and memory paths |
+| `prepare_role_avatar_content` | `profile: string, path: string, modelType: string` | `string` path | Copies image, Live2D, or future 3D avatar content into `usr/roles/{profile}/avatar/` |
+| `set_active_role` | `profile: string` | `string` (JSON: `{active_role}`) | Writes `[personality] default_profile` and applies role avatar if configured |
 | `delete_role` | `profile: string, confirmation: string` | `string` "ok" | Requires exact `我确认删除{profile}`; cannot delete `default` |
 | `generate_role_profile` | `seed: RoleGenerationSeed` | `string` (raw JSON) | Uses configured remote chat API to generate a role JSON draft |
 | `create_memory` | `kind: string, content: string, source?: string, pinned?: boolean` | `string` (JSON: MemoryItem) | Adds a manual memory for the active role |
@@ -454,7 +455,7 @@ Stable companion contracts:
 - `companion-avatar-event` carries avatar renderer events: `expression`, `motion`, `speak_start`, `speak_stop`, `look_at`, and `idle`.
 - Companion position and size are restored from `[companion.window]` and persisted through `update_settings`.
 - User-managed memory is stored under `usr/memory/{role_id}/memories.json` in development and injected as bounded prompt context. Archived memories are excluded; pinned memories are preferred.
-- User-created roles are stored under `usr/roles/{id}.json` in development. The bundled `default` role remains in `personality/default.json`.
+- User-created roles are stored under `usr/roles/{id}.json` in development, with copied role avatar assets under `usr/roles/{id}/avatar/`. The bundled `default` role remains in `personality/default.json`.
 
 Recommended next task:
 - Harden role and memory storage for packaged builds by moving `usr/roles` and `usr/memory` to the system user data directory, then add role/memory storage tests. Do not add Plugin Boundary work until memory state ownership is stable.

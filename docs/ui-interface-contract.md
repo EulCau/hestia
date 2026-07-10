@@ -107,6 +107,18 @@ Usage:
     `.model3.json` path
   - digital_human: currently returns the selected path unchanged for future renderer use
 ```
+
+#### `prepare_role_avatar_content`
+```
+Arguments: { profile: string, path: string, modelType: "placeholder" | "live2d" | "digital_human" }
+Returns:  string — copied avatar path to store in RoleProfile.avatar.image_path
+Errors:   string if the role id is empty or selected content cannot be prepared
+Usage:
+  - placeholder: copies the selected image to `usr/roles/{profile}/avatar/avatar.<ext>`
+  - live2d: accepts a directory or `.model3.json`, copies the runtime directory to
+    `usr/roles/{profile}/avatar/live2d/`, and returns the copied `.model3.json` path
+  - digital_human: copies `.vrm`, `.glb`, or `.gltf` to `usr/roles/{profile}/avatar/avatar.<ext>`
+```
 Arguments: none
 Returns:  string (JSON)
   {
@@ -262,7 +274,7 @@ Side effect: Removes the memory from usr/memory/{active_role}/memories.json.
 #### `role_storage_paths`
 ```
 Arguments: { profile: string }
-Returns:  string (JSON) — { role: string, memory: string }
+Returns:  string (JSON) — { role: string, assets: string, memory: string }
 Errors:   never
 Usage:    Displays editable role and memory config file paths in the frontend.
 ```
@@ -273,6 +285,9 @@ Arguments: { profile: string }
 Returns:  string (JSON) — { active_role: string }
 Errors:   string if profile does not exist or config cannot be written
 Side effect: Writes [personality] default_profile in config/user.toml.
+             If the selected role has RoleProfile.avatar.image_path, the backend
+             also writes [app.avatar] enabled/model_type/image_path and emits
+             avatar-config-changed so visible avatar adapters hot-swap.
 ```
 
 #### `delete_role`
@@ -1059,6 +1074,11 @@ interface RoleProfile {
   identity: string;
   species: string;
   appearance: string;
+  avatar: {
+    enabled: boolean;
+    model_type: "placeholder" | "live2d" | "digital_human" | string;
+    image_path: string;
+  };
   personality: string;
   language_style: string;
   scenario: string;

@@ -112,9 +112,10 @@ The MVP is manual only: the user creates, edits, pins, archives, and deletes mem
 | Role schema and prompt assembly | `src-tauri/src/personality/mod.rs` | Done |
 | Role management commands | `src-tauri/src/lib.rs` | Done |
 | Role management UI | `frontend/src/main.ts` | Done |
+| Role-specific avatar assets | `src-tauri/src/lib.rs`, `frontend/src/main.ts` | Done |
 | Default role template | `personality/default.json` | Done |
 
-User-created roles are stored in `usr/roles/{id}.json`. The active role is `personality.default_profile` in config. Base prompt rules such as halfwidth Chinese punctuation and optional parenthetical actions are injected by the PromptAssembler rather than stored in role personality files.
+User-created roles are stored in `usr/roles/{id}.json`, with copied avatar files under `usr/roles/{id}/avatar/`. The active role is `personality.default_profile` in config. Base prompt rules such as halfwidth Chinese punctuation and optional parenthetical actions are injected by the PromptAssembler rather than stored in role personality files.
 
 ---
 

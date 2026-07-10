@@ -35,6 +35,8 @@ pub struct PersonaConfig {
     #[serde(default)]
     pub appearance: String,
     #[serde(default)]
+    pub avatar: RoleAvatarConfig,
+    #[serde(default)]
     pub personality: String,
     #[serde(default)]
     pub language_style: String,
@@ -56,6 +58,16 @@ pub struct PersonaConfig {
     pub created_at: Option<u64>,
     #[serde(default)]
     pub updated_at: Option<u64>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RoleAvatarConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub model_type: String,
+    #[serde(default)]
+    pub image_path: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -354,9 +366,19 @@ pub fn delete_persona(profile_name: &str) -> Result<(), Box<dyn std::error::Erro
         return Err(format!("role override not found: {profile_name}").into());
     }
     std::fs::remove_file(&path)?;
+    let assets = role_asset_dir(profile_name);
+    if assets.exists() {
+        std::fs::remove_dir_all(assets)?;
+    }
     Ok(())
 }
 
 pub fn role_storage_path(profile_name: &str) -> String {
     persona_write_path(profile_name).display().to_string()
+}
+
+pub fn role_asset_dir(profile_name: &str) -> PathBuf {
+    user_persona_dir()
+        .join(sanitize_profile_id(profile_name))
+        .join("avatar")
 }

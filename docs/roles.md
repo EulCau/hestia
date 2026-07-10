@@ -31,6 +31,11 @@ interface RoleProfile {
   identity: string;
   species: string;
   appearance: string;
+  avatar: {
+    enabled: boolean;
+    model_type: "placeholder" | "live2d" | "digital_human" | string;
+    image_path: string;
+  };
   personality: string;
   language_style: string;
   scenario: string;
@@ -45,6 +50,8 @@ interface RoleProfile {
 `name` and `aliases` are explicitly injected into the system prompt as references to the role itself. If the user later says one of those names, the model should understand it means the character being role-played.
 
 Role ids are restricted to ASCII letters, digits, `_`, and `-` because they are used as config file names.
+
+`appearance` is the textual visual description used in prompts. `avatar` is the renderer-facing visual configuration. If `avatar.image_path` is present, activating the role applies that image, Live2D model, or future 3D model to the current avatar config.
 
 ---
 
@@ -68,6 +75,7 @@ The Roles panel supports:
 - select an existing role
 - create a new role
 - edit name, aliases, identity, species, appearance, personality, language habits, scenario, and tone
+- select role-specific avatar content: image, Live2D runtime directory, or future 3D model file
 - generate missing fields from the configured chat API
 - save and activate
 - pin
@@ -80,6 +88,14 @@ Deletion requires:
 ```
 
 The bundled `default` role cannot be deleted.
+
+Selected avatar files are copied under:
+
+```text
+usr/roles/{role_id}/avatar/
+```
+
+This keeps each role self-contained. The role JSON stores the copied path, not the original source path. Deleting a user-created role also removes its copied avatar directory.
 
 ---
 

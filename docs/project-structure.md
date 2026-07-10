@@ -169,7 +169,7 @@ Bundled role presets. User-created role files are stored under `usr/roles/` in d
 
 Development-time local user data. This directory is gitignored. Current uses:
 
-- `usr/roles/`: user-created role JSON files saved by the Roles panel
+- `usr/roles/`: user-created role JSON files and copied role avatar assets saved by the Roles panel
 - `usr/memory/{role_id}/`: role-specific long-term memory files
 
 Packaged builds should map this data to the operating system user data directory instead of the repository path.

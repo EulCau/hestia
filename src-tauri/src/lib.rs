@@ -306,18 +306,24 @@ fn save_persona_content(profile: String, content: String) -> Result<String, Stri
 fn role_storage_paths(profile: String) -> String {
     serde_json::json!({
         "role": personality::role_storage_path(&profile),
+        "assets": personality::role_asset_dir(&profile).display().to_string(),
         "memory": memory::memory_storage_path(&profile),
     })
     .to_string()
 }
 
 #[tauri::command]
-fn set_active_role(state: tauri::State<'_, AppState>, profile: String) -> Result<String, String> {
+fn set_active_role(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    profile: String,
+) -> Result<String, String> {
     if !personality::list_profiles().contains(&profile) {
         return Err(format!("role not found: {profile}"));
     }
     config::update_user_config(serde_json::json!({ "personality_default_profile": profile }))
         .map_err(|e| format!("failed to update active role: {}", e))?;
+    apply_role_avatar(&app, &profile)?;
     let cfg = current_config(&state);
     Ok(serde_json::json!({ "active_role": cfg.personality.default_profile }).to_string())
 }
@@ -431,6 +437,49 @@ fn delete_memory(state: tauri::State<'_, AppState>, id: String) -> Result<String
 
 // ── Mutate commands ──
 
+fn emit_avatar_config_changed(app: &tauri::AppHandle, avatar: &config::AvatarSection) {
+    let payload = serde_json::json!({
+        "enabled": avatar.enabled,
+        "image_path": avatar.image_path,
+        "model_type": avatar.model_type,
+        "auto_select": avatar.auto_select,
+        "idle_expression": avatar.idle_expression,
+        "thinking_expression": avatar.thinking_expression,
+        "speaking_expression": avatar.speaking_expression,
+        "error_expression": avatar.error_expression,
+        "idle_motion": avatar.idle_motion,
+        "thinking_motion": avatar.thinking_motion,
+        "speaking_motion": avatar.speaking_motion,
+    });
+    let _ = app.emit_to("main", "avatar-config-changed", payload.clone());
+    let _ = app.emit_to("companion", "avatar-config-changed", payload.clone());
+    let _ = app.emit_to("companion_dialog", "avatar-config-changed", payload);
+}
+
+fn apply_role_avatar(app: &tauri::AppHandle, profile: &str) -> Result<(), String> {
+    let raw = personality::read_persona_raw(profile)
+        .map_err(|e| format!("failed to read role avatar config: {}", e))?;
+    let role: personality::PersonaConfig =
+        serde_json::from_str(&raw).map_err(|e| format!("failed to parse role: {}", e))?;
+    if role.avatar.image_path.trim().is_empty() {
+        return Ok(());
+    }
+    let model_type = if role.avatar.model_type.trim().is_empty() {
+        "placeholder".to_string()
+    } else {
+        role.avatar.model_type
+    };
+    config::update_user_config(serde_json::json!({
+        "avatar_enabled": role.avatar.enabled,
+        "avatar_model_type": model_type,
+        "avatar_image_path": role.avatar.image_path,
+    }))
+    .map_err(|e| format!("failed to apply role avatar: {}", e))?;
+    let cfg = config::load_config().map_err(|e| format!("failed to reload config: {}", e))?;
+    emit_avatar_config_changed(app, &cfg.app.avatar);
+    Ok(())
+}
+
 #[tauri::command]
 async fn update_settings(
     app: tauri::AppHandle,
@@ -451,22 +500,7 @@ async fn update_settings(
     config::update_user_config(updates).map_err(|e| format!("failed to update config: {}", e))?;
     if avatar_changed {
         let cfg = config::load_config().map_err(|e| format!("failed to reload config: {}", e))?;
-        let payload = serde_json::json!({
-            "enabled": cfg.app.avatar.enabled,
-            "image_path": cfg.app.avatar.image_path,
-            "model_type": cfg.app.avatar.model_type,
-            "auto_select": cfg.app.avatar.auto_select,
-            "idle_expression": cfg.app.avatar.idle_expression,
-            "thinking_expression": cfg.app.avatar.thinking_expression,
-            "speaking_expression": cfg.app.avatar.speaking_expression,
-            "error_expression": cfg.app.avatar.error_expression,
-            "idle_motion": cfg.app.avatar.idle_motion,
-            "thinking_motion": cfg.app.avatar.thinking_motion,
-            "speaking_motion": cfg.app.avatar.speaking_motion,
-        });
-        let _ = app.emit_to("main", "avatar-config-changed", payload.clone());
-        let _ = app.emit_to("companion", "avatar-config-changed", payload.clone());
-        let _ = app.emit_to("companion_dialog", "avatar-config-changed", payload);
+        emit_avatar_config_changed(&app, &cfg.app.avatar);
     }
     Ok("ok".into())
 }
@@ -813,6 +847,25 @@ fn timestamp_millis() -> Result<u128, String> {
         .map_err(|e| format!("system clock is before UNIX_EPOCH: {}", e))
 }
 
+fn copy_file_to_dir(
+    source: &Path,
+    target_dir: &Path,
+    target_name: &str,
+) -> Result<PathBuf, String> {
+    std::fs::create_dir_all(target_dir)
+        .map_err(|e| format!("failed to create {}: {}", target_dir.display(), e))?;
+    let target = target_dir.join(target_name);
+    std::fs::copy(source, &target).map_err(|e| {
+        format!(
+            "failed to copy {} to {}: {}",
+            source.display(),
+            target.display(),
+            e
+        )
+    })?;
+    Ok(target)
+}
+
 #[tauri::command]
 fn prepare_avatar_content(path: String, model_type: String) -> Result<String, String> {
     let source = resolve_project_path(path.trim());
@@ -874,6 +927,81 @@ fn prepare_avatar_content(path: String, model_type: String) -> Result<String, St
     }
 
     Ok(path)
+}
+
+#[tauri::command]
+fn prepare_role_avatar_content(
+    profile: String,
+    path: String,
+    model_type: String,
+) -> Result<String, String> {
+    let profile = profile.trim();
+    if profile.is_empty() {
+        return Err("role id is required before selecting avatar content".into());
+    }
+    let source = resolve_project_path(path.trim());
+    let asset_dir = personality::role_asset_dir(profile);
+
+    if model_type == "live2d" {
+        let model_path = find_model3_json(&source)?;
+        let root = if source.is_dir() {
+            source
+        } else {
+            model_path
+                .parent()
+                .ok_or_else(|| "Live2D model has no parent directory".to_string())?
+                .to_path_buf()
+        };
+        let target = asset_dir.join("live2d");
+        if target.exists() {
+            std::fs::remove_dir_all(&target)
+                .map_err(|e| format!("failed to clear {}: {}", target.display(), e))?;
+        }
+        copy_dir_recursive(&root, &target)?;
+        let model_relative_to_root = model_path
+            .strip_prefix(&root)
+            .map_err(|_| "failed to resolve Live2D model path".to_string())?;
+        return Ok(target
+            .join(model_relative_to_root)
+            .to_string_lossy()
+            .replace('\\', "/"));
+    }
+
+    if model_type == "placeholder" {
+        if !source.is_file() {
+            return Err("image avatar path must be a file".into());
+        }
+        let extension = source
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("png")
+            .to_ascii_lowercase();
+        let allowed = ["png", "jpg", "jpeg", "webp", "gif"];
+        if !allowed.contains(&extension.as_str()) {
+            return Err("image avatar must be png, jpg, jpeg, webp, or gif".into());
+        }
+        let target = copy_file_to_dir(&source, &asset_dir, &format!("avatar.{extension}"))?;
+        return Ok(target.to_string_lossy().replace('\\', "/"));
+    }
+
+    if model_type == "digital_human" {
+        if !source.is_file() {
+            return Err("3D avatar path must be a file".into());
+        }
+        let extension = source
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .unwrap_or("glb")
+            .to_ascii_lowercase();
+        let allowed = ["vrm", "glb", "gltf"];
+        if !allowed.contains(&extension.as_str()) {
+            return Err("3D avatar must be vrm, glb, or gltf".into());
+        }
+        let target = copy_file_to_dir(&source, &asset_dir, &format!("avatar.{extension}"))?;
+        return Ok(target.to_string_lossy().replace('\\', "/"));
+    }
+
+    Err(format!("unsupported role avatar type: {model_type}"))
 }
 
 #[tauri::command]
@@ -1745,6 +1873,7 @@ pub fn run() {
             restart_backend,
             read_image_artifact,
             prepare_avatar_content,
+            prepare_role_avatar_content,
             recognize_image,
             record_user_activity,
             evaluate_initiative,

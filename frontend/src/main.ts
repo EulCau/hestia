@@ -145,6 +145,11 @@ interface RoleProfile {
   identity: string;
   species: string;
   appearance: string;
+  avatar?: {
+    enabled: boolean;
+    model_type: string;
+    image_path: string;
+  };
   personality: string;
   language_style: string;
   scenario: string;
@@ -157,6 +162,7 @@ interface RoleProfile {
 
 interface RoleStoragePaths {
   role: string;
+  assets: string;
   memory: string;
 }
 
@@ -1009,6 +1015,11 @@ function emptyRole(): RoleProfile {
     identity: "",
     species: "",
     appearance: "",
+    avatar: {
+      enabled: false,
+      model_type: "placeholder",
+      image_path: "",
+    },
     personality: "",
     language_style: "",
     scenario: "",
@@ -1031,6 +1042,16 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
   const identityInput = el("input", { type: "text", placeholder: "身份" }) as HTMLInputElement;
   const speciesInput = el("input", { type: "text", placeholder: "物种" }) as HTMLInputElement;
   const appearanceInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "形象" }) as HTMLTextAreaElement;
+  const avatarEnabled = el("input", { type: "checkbox" }) as HTMLInputElement;
+  const avatarType = el("select") as HTMLSelectElement;
+  [
+    ["placeholder", "Image"],
+    ["live2d", "Live2D"],
+    ["digital_human", "3D"],
+  ].forEach(([value, label]) => avatarType.append(option(value, label, "placeholder")));
+  const avatarPath = el("input", { type: "text", placeholder: "角色形象资源路径" }) as HTMLInputElement;
+  const avatarBrowse = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
+  const avatarHint = el("div", { class: "settings-hint" }, "选择图片或 Live2D 目录后会复制到当前角色资源目录.");
   const personalityInput = el("textarea", { class: "role-editor", rows: "4", placeholder: "性格" }) as HTMLTextAreaElement;
   const languageInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "语言习惯" }) as HTMLTextAreaElement;
   const scenarioInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "使用场景" }) as HTMLTextAreaElement;
@@ -1053,6 +1074,11 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
       identity: identityInput.value.trim(),
       species: speciesInput.value.trim(),
       appearance: appearanceInput.value.trim(),
+      avatar: {
+        enabled: avatarEnabled.checked,
+        model_type: avatarType.value,
+        image_path: avatarPath.value.trim(),
+      },
       personality: personalityInput.value.trim(),
       language_style: languageInput.value.trim(),
       scenario: scenarioInput.value.trim(),
@@ -1071,6 +1097,9 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
     identityInput.value = role.identity || "";
     speciesInput.value = role.species || "";
     appearanceInput.value = role.appearance || "";
+    avatarEnabled.checked = role.avatar?.enabled ?? Boolean(role.avatar?.image_path);
+    avatarType.value = role.avatar?.model_type || "placeholder";
+    avatarPath.value = role.avatar?.image_path || "";
     personalityInput.value = role.personality || "";
     languageInput.value = role.language_style || "";
     scenarioInput.value = role.scenario || "";
@@ -1078,7 +1107,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
     pinnedInput.checked = Boolean(role.pinned);
     try {
       const paths = JSON.parse(await invoke<string>("role_storage_paths", { profile: role.id || "default" })) as RoleStoragePaths;
-      pathHint.textContent = `Role: ${paths.role}\nMemory: ${paths.memory}`;
+      pathHint.textContent = `Role: ${paths.role}\nAssets: ${paths.assets}\nMemory: ${paths.memory}`;
     } catch {
       pathHint.textContent = "";
     }
@@ -1103,6 +1132,49 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
   roleSelect.addEventListener("change", async () => {
     const role = roles.find((item) => item.id === roleSelect.value);
     if (role) await applyRole(role);
+  });
+
+  avatarBrowse.addEventListener("click", async () => {
+    const role = roleFromForm();
+    if (!role.id) {
+      avatarHint.textContent = "Set a role ID or name before selecting avatar content.";
+      return;
+    }
+    const selected =
+      avatarType.value === "live2d"
+        ? await open({ multiple: false, directory: true })
+        : await open({
+            multiple: false,
+            filters:
+              avatarType.value === "digital_human"
+                ? [{ name: "3D Model", extensions: ["vrm", "glb", "gltf"] }]
+                : [{ name: "Image", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+          });
+    if (!selected || typeof selected !== "string") return;
+    try {
+      avatarPath.value = await invoke<string>("prepare_role_avatar_content", {
+        profile: role.id,
+        path: selected,
+        modelType: avatarType.value,
+      });
+      avatarEnabled.checked = true;
+      avatarHint.textContent = "Avatar content copied into this role's asset directory.";
+    } catch (error) {
+      avatarHint.textContent = `Avatar selection failed: ${String(error)}`;
+    }
+  });
+
+  avatarType.addEventListener("change", () => {
+    if (avatarType.value === "live2d") {
+      avatarPath.placeholder = "Select a Live2D runtime directory";
+      avatarHint.textContent = "Choose a directory containing a .model3.json file. Files are copied to the current role asset directory.";
+    } else if (avatarType.value === "digital_human") {
+      avatarPath.placeholder = "Path to copied .vrm, .glb, or .gltf";
+      avatarHint.textContent = "3D content is copied and stored now; rendering still requires a future 3D adapter.";
+    } else {
+      avatarPath.placeholder = "Path to copied image file";
+      avatarHint.textContent = "Choose an image file. It is copied to the current role asset directory.";
+    }
   });
 
   const newBtn = el("button", { class: "btn btn-secondary", type: "button" }, "New");
@@ -1191,6 +1263,10 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
       fieldRow("Identity", identityInput),
       fieldRow("Species", speciesInput),
       fieldRow("Appearance", appearanceInput),
+      fieldRow("Avatar enabled", avatarEnabled),
+      fieldRow("Avatar type", avatarType),
+      fieldRow("Avatar content", el("div", { class: "inline-controls" }, avatarPath, avatarBrowse)),
+      avatarHint,
       fieldRow("Personality", personalityInput),
       fieldRow("Language", languageInput),
       fieldRow("Scenario", scenarioInput),
