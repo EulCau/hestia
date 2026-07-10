@@ -477,6 +477,12 @@ fn config_path() -> PathBuf {
     PathBuf::from("config/default.toml")
 }
 fn user_config_path() -> PathBuf {
+    if let Ok(dir) = std::env::var("HESTIA_USER_DIR") {
+        return PathBuf::from(dir).join("config").join("user.toml");
+    }
+    if !cfg!(debug_assertions) {
+        return platform_user_data_dir().join("config").join("user.toml");
+    }
     let m = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
     let v: Vec<PathBuf> = vec![
         std::env::current_exe()
@@ -494,6 +500,34 @@ fn user_config_path() -> PathBuf {
         }
     }
     PathBuf::from("config/user.toml")
+}
+
+fn platform_user_data_dir() -> PathBuf {
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return PathBuf::from(appdata).join("hestia");
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("hestia");
+        }
+    }
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        return PathBuf::from(xdg).join("hestia");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("hestia");
+    }
+    PathBuf::from(".").join("hestia-user-data")
 }
 
 fn deep_merge(base: &mut toml::Value, ov: &toml::Value) {
@@ -516,7 +550,14 @@ fn deep_merge(base: &mut toml::Value, ov: &toml::Value) {
 pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
     let p = config_path();
     info!("loading config from {}", p.display());
-    let mut base: toml::Value = toml::from_str(&std::fs::read_to_string(&p)?)?;
+    let base_content = std::fs::read_to_string(&p).unwrap_or_else(|_| {
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../config/default.toml"
+        ))
+        .to_string()
+    });
+    let mut base: toml::Value = toml::from_str(&base_content)?;
     let up = user_config_path();
     if up.exists() {
         info!("merging user config from {}", up.display());

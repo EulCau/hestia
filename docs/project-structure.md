@@ -154,6 +154,7 @@ Examples:
 - download sample assets
 - generate schema
 - run local worker health checks
+- package Linux and Windows installers
 
 ### `config`
 

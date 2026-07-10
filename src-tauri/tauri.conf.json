@@ -28,6 +28,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "resources": [
+      "../assets/avatar-placeholder.png",
+      "../assets/companion-cat-placeholder.png",
+      "../assets/workflows/sdxl.json"
+    ],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

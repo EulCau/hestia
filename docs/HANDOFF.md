@@ -499,4 +499,5 @@ npm run build
 | [docs/desktop-companion.md](/home/eulcau/CXTX/hestia/docs/desktop-companion.md) | Desktop companion avatar rendering design (Live2D, Spine, Unity+VRM) |
 | [docs/roles.md](/home/eulcau/CXTX/hestia/docs/roles.md) | Role profile schema, storage, generation, deletion, and active-role memory behavior |
 | [docs/memory.md](/home/eulcau/CXTX/hestia/docs/memory.md) | Long-term memory storage, retrieval, and prompt injection |
+| [docs/packaging.md](/home/eulcau/CXTX/hestia/docs/packaging.md) | Linux and Windows packaging scripts, targets, and user data paths |
 | [AGENTS.md](/home/eulcau/CXTX/hestia/AGENTS.md) | Codex project rules |

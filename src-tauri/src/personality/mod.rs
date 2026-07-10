@@ -94,9 +94,8 @@ pub fn runtime_metadata_message() -> serde_json::Value {
 
 impl PromptAssembler {
     pub fn load(profile_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
-        let path = persona_read_path(profile_name);
-        info!("loading persona from {}", path.display());
-        let content = std::fs::read_to_string(&path)?;
+        info!("loading persona profile {}", profile_name);
+        let content = read_persona_raw(profile_name)?;
         let persona: PersonaConfig = serde_json::from_str(&content)?;
         Ok(Self { persona })
     }
@@ -180,8 +179,42 @@ fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
+fn user_data_root() -> PathBuf {
+    if let Ok(dir) = std::env::var("HESTIA_USER_DIR") {
+        return PathBuf::from(dir);
+    }
+    if cfg!(debug_assertions) {
+        return project_root().join("usr");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return PathBuf::from(appdata).join("hestia");
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("hestia");
+        }
+    }
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        return PathBuf::from(xdg).join("hestia");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("hestia");
+    }
+    PathBuf::from(".").join("hestia-user-data")
+}
+
 fn user_persona_dir() -> PathBuf {
-    project_root().join("usr").join("roles")
+    user_data_root().join("roles")
 }
 
 fn bundled_persona_dir_candidates() -> Vec<PathBuf> {
@@ -258,14 +291,16 @@ pub fn list_profiles() -> Vec<String> {
             }
         }
     }
+    if !profiles.contains(&"default".to_string()) {
+        profiles.push("default".into());
+    }
     profiles
 }
 
 pub fn list_role_configs() -> Result<Vec<PersonaConfig>, Box<dyn std::error::Error>> {
     let mut roles = Vec::new();
     for profile in list_profiles() {
-        let path = persona_read_path(&profile);
-        if let Ok(content) = std::fs::read_to_string(&path) {
+        if let Ok(content) = read_persona_raw(&profile) {
             if let Ok(mut role) = serde_json::from_str::<PersonaConfig>(&content) {
                 if role.id.trim().is_empty() {
                     role.id = profile;
@@ -347,7 +382,15 @@ impl PersonaRewriter {
 /// Read the raw JSON content of a persona profile.
 pub fn read_persona_raw(profile_name: &str) -> Result<String, Box<dyn std::error::Error>> {
     let path = persona_read_path(profile_name);
-    Ok(std::fs::read_to_string(&path)?)
+    match std::fs::read_to_string(&path) {
+        Ok(content) => Ok(content),
+        Err(_) if sanitize_profile_id(profile_name) == "default" => Ok(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../personality/default.json"
+        ))
+        .to_string()),
+        Err(error) => Err(error.into()),
+    }
 }
 
 /// Save raw JSON content to a persona profile.

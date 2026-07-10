@@ -45,6 +45,40 @@ fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
+fn user_data_root() -> PathBuf {
+    if let Ok(dir) = std::env::var("HESTIA_USER_DIR") {
+        return PathBuf::from(dir);
+    }
+    if cfg!(debug_assertions) {
+        return project_root().join("usr");
+    }
+    #[cfg(target_os = "windows")]
+    {
+        if let Ok(appdata) = std::env::var("APPDATA") {
+            return PathBuf::from(appdata).join("hestia");
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(home) = std::env::var("HOME") {
+            return PathBuf::from(home)
+                .join("Library")
+                .join("Application Support")
+                .join("hestia");
+        }
+    }
+    if let Ok(xdg) = std::env::var("XDG_DATA_HOME") {
+        return PathBuf::from(xdg).join("hestia");
+    }
+    if let Ok(home) = std::env::var("HOME") {
+        return PathBuf::from(home)
+            .join(".local")
+            .join("share")
+            .join("hestia");
+    }
+    PathBuf::from(".").join("hestia-user-data")
+}
+
 fn sanitize_role_id(role_id: &str) -> String {
     let value: String = role_id
         .chars()
@@ -58,15 +92,11 @@ fn sanitize_role_id(role_id: &str) -> String {
 }
 
 fn legacy_memory_path() -> PathBuf {
-    project_root()
-        .join("usr")
-        .join("memory")
-        .join("memories.json")
+    user_data_root().join("memory").join("memories.json")
 }
 
 fn memory_path(role_id: &str) -> PathBuf {
-    project_root()
-        .join("usr")
+    user_data_root()
         .join("memory")
         .join(sanitize_role_id(role_id))
         .join("memories.json")

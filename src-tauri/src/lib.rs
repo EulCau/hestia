@@ -1076,6 +1076,7 @@ fn prepare_role_avatar_content(
     let asset_dir = personality::role_asset_dir(profile);
     let public_id = sanitize_asset_id(profile);
     let public_asset_dir = resolve_project_path("frontend/public/role-avatar").join(&public_id);
+    let use_public_cache = cfg!(debug_assertions);
 
     if model_type == "live2d" {
         let model_path = find_model3_json(&source)?;
@@ -1093,20 +1094,26 @@ fn prepare_role_avatar_content(
                 .map_err(|e| format!("failed to clear {}: {}", target.display(), e))?;
         }
         copy_dir_recursive(&root, &target)?;
-        let public_target = public_asset_dir.join("live2d");
-        if public_target.exists() {
-            std::fs::remove_dir_all(&public_target)
-                .map_err(|e| format!("failed to clear {}: {}", public_target.display(), e))?;
-        }
-        copy_dir_recursive(&root, &public_target)?;
         let model_relative_to_root = model_path
             .strip_prefix(&root)
             .map_err(|_| "failed to resolve Live2D model path".to_string())?;
-        return Ok(format!(
-            "role-avatar/{}/live2d/{}",
-            public_id,
-            model_relative_to_root.to_string_lossy().replace('\\', "/")
-        ));
+        if use_public_cache {
+            let public_target = public_asset_dir.join("live2d");
+            if public_target.exists() {
+                std::fs::remove_dir_all(&public_target)
+                    .map_err(|e| format!("failed to clear {}: {}", public_target.display(), e))?;
+            }
+            copy_dir_recursive(&root, &public_target)?;
+            return Ok(format!(
+                "role-avatar/{}/live2d/{}",
+                public_id,
+                model_relative_to_root.to_string_lossy().replace('\\', "/")
+            ));
+        }
+        return Ok(target
+            .join(model_relative_to_root)
+            .to_string_lossy()
+            .replace('\\', "/"));
     }
 
     if model_type == "placeholder" {
@@ -1123,9 +1130,12 @@ fn prepare_role_avatar_content(
             return Err("image avatar must be png, jpg, jpeg, webp, or gif".into());
         }
         let target_name = format!("avatar.{extension}");
-        copy_file_to_dir(&source, &asset_dir, &target_name)?;
-        copy_file_to_dir(&source, &public_asset_dir, &target_name)?;
-        return Ok(format!("role-avatar/{public_id}/{target_name}"));
+        let target = copy_file_to_dir(&source, &asset_dir, &target_name)?;
+        if use_public_cache {
+            copy_file_to_dir(&source, &public_asset_dir, &target_name)?;
+            return Ok(format!("role-avatar/{public_id}/{target_name}"));
+        }
+        return Ok(target.to_string_lossy().replace('\\', "/"));
     }
 
     if model_type == "digital_human" {
@@ -1142,9 +1152,12 @@ fn prepare_role_avatar_content(
             return Err("3D avatar must be vrm, glb, or gltf".into());
         }
         let target_name = format!("avatar.{extension}");
-        copy_file_to_dir(&source, &asset_dir, &target_name)?;
-        copy_file_to_dir(&source, &public_asset_dir, &target_name)?;
-        return Ok(format!("role-avatar/{public_id}/{target_name}"));
+        let target = copy_file_to_dir(&source, &asset_dir, &target_name)?;
+        if use_public_cache {
+            copy_file_to_dir(&source, &public_asset_dir, &target_name)?;
+            return Ok(format!("role-avatar/{public_id}/{target_name}"));
+        }
+        return Ok(target.to_string_lossy().replace('\\', "/"));
     }
 
     Err(format!("unsupported role avatar type: {model_type}"))
