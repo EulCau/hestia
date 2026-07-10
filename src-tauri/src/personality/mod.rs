@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
 fn default_schema_version() -> u32 {
@@ -80,6 +81,17 @@ pub struct PromptAssembler {
     persona: PersonaConfig,
 }
 
+pub fn runtime_metadata_message() -> serde_json::Value {
+    let timestamp_ms = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis())
+        .unwrap_or(0);
+    serde_json::json!({
+        "role": "system",
+        "content": format!("Current request timestamp (unix_ms): {timestamp_ms}. This dynamic metadata is intentionally placed last to preserve prompt-prefix cacheability."),
+    })
+}
+
 impl PromptAssembler {
     pub fn load(profile_name: &str) -> Result<Self, Box<dyn std::error::Error>> {
         let path = persona_read_path(profile_name);
@@ -102,6 +114,7 @@ impl PromptAssembler {
             "- Parentheses may be used for brief actions, states, tone, or expressions when appropriate.",
             "- Do not let style override facts, reasoning, safety, or the user's current request.",
             "- If long-term memory conflicts with the current user message, prefer the current user message.",
+            "- Dynamic runtime metadata, including timestamps, is supplied at the end of the message list.",
             "",
             "Character profile:",
             &format!("- Name and aliases: {aliases}"),
@@ -142,6 +155,7 @@ impl PromptAssembler {
             "role": "user",
             "content": user_message,
         }));
+        messages.push(runtime_metadata_message());
         messages
     }
 

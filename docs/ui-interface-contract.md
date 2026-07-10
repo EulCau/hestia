@@ -228,7 +228,8 @@ Async:    YES. This is the primary long-running operation.
             4. If should_generate=false or routing fails, PromptAssembler loads active role JSON
             5. Memory retrieval loads pinned/relevant memories and injects a bounded context message
             6. RemoteApiWorker.infer() → HTTP POST to DeepSeek
-            7. Returns the remote response directly. Local persona rewrite is currently disabled.
+            7. Appends dynamic request metadata, including timestamp, as the final message
+            8. Returns the remote response directly. Local persona rewrite is currently disabled.
             12. Returns final JSON string
 UI State:
   BEFORE:  disable textarea and send/image buttons, show "Thinking..." or "Generating image..."
@@ -1100,6 +1101,8 @@ interface RoleProfile {
 ```
 
 Role files describe character traits only. Base prompt rules, including halfwidth Chinese punctuation and optional parenthetical actions/states, are injected by `PromptAssembler::build_system_prompt()` and must not be duplicated into role personality files. The active role id is `ConfigSnapshot.personality.default_profile`.
+
+Dynamic runtime metadata, including the current request timestamp, is appended as the final message in remote chat-style requests. Stable system prompt content remains earlier in the message list to improve prompt-prefix cache hit rates.
 
 
 ---

@@ -374,6 +374,7 @@ Or via env var: `export DEEPSEEK_API_KEY=sk-...`
 ### Remote Role Prompting
 - **Current behavior**: `PromptAssembler` injects base rules, active role fields, and relevant active-role memories into the chat prompt.
 - **Design constraint**: Role JSON contains character traits only. Global rules such as punctuation policy, parenthetical action syntax, memory conflict priority, and safety/factual priority stay in `PromptAssembler`.
+- **Cache behavior**: Dynamic runtime metadata, including request timestamps, is appended as the final message so stable prompt prefixes remain cache-friendly.
 - **Rewrite path**: Persona rewrite is currently disabled. Active role style is handled by the remote prompt.
 
 ### Wayland GBM Buffer Errors

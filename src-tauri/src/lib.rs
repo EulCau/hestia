@@ -522,6 +522,7 @@ async fn compress_memories(state: tauri::State<'_, AppState>) -> Result<String, 
             "role": "user",
             "content": prompt,
         }),
+        personality::runtime_metadata_message(),
     ];
     let mut job = crate::protocol::Job::new(
         "memory_compression",
@@ -1391,7 +1392,8 @@ async fn classify_image_intent(
         {
             "role": "user",
             "content": format!("Recent history:\n{}\n\nCurrent user message:\n{}", recent_history, message)
-        }
+        },
+        personality::runtime_metadata_message()
     ]);
     let mut job = crate::protocol::Job::new(
         "image_intent",
