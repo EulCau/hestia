@@ -638,6 +638,10 @@ button {
   width: min(680px, 100%);
 }
 
+.memory-panel {
+  width: min(760px, 100%);
+}
+
 .persona-editor {
   min-height: 340px;
   margin-bottom: 16px;
@@ -645,6 +649,65 @@ button {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.82rem;
   line-height: 1.55;
+}
+
+.memory-editor {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  padding: 9px 10px;
+  border: 1px solid var(--border-input);
+  border-radius: 7px;
+  outline: none;
+  background: var(--bg-input);
+  color: var(--input-text);
+  line-height: 1.45;
+}
+
+.memory-editor:focus {
+  border-color: var(--border-focus);
+}
+
+.memory-list {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.memory-empty {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-muted);
+  background: var(--surface);
+}
+
+.memory-item {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.memory-item-meta {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+}
+
+.memory-item-content {
+  color: var(--text-primary);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.memory-item-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .test-prompt {

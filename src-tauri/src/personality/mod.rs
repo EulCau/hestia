@@ -39,16 +39,23 @@ impl PromptAssembler {
         "You are a helpful assistant. Respond concisely and precisely.".into()
     }
 
-    pub fn assemble_messages(
+    pub fn assemble_messages_with_context(
         &self,
         user_message: &str,
         history: &[ChatMessage],
+        context: Option<&str>,
     ) -> Vec<serde_json::Value> {
         let mut messages: Vec<serde_json::Value> = Vec::new();
         messages.push(serde_json::json!({
             "role": "system",
             "content": self.build_system_prompt(),
         }));
+        if let Some(context) = context.map(str::trim).filter(|value| !value.is_empty()) {
+            messages.push(serde_json::json!({
+                "role": "system",
+                "content": context,
+            }));
+        }
         for msg in history {
             messages.push(serde_json::json!({
                 "role": msg.role,

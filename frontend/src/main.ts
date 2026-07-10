@@ -124,6 +124,19 @@ interface InitiativeResponse {
   decision: InitiativeDecision;
 }
 
+interface MemoryItem {
+  id: string;
+  kind: string;
+  content: string;
+  source: string;
+  confidence: number;
+  created_at: number;
+  updated_at: number;
+  last_used_at?: number | null;
+  pinned: boolean;
+  archived: boolean;
+}
+
 type CompanionAvatarEventType = "expression" | "motion" | "speak_start" | "speak_stop" | "look_at" | "idle";
 
 interface CompanionAvatarEventPayload {
@@ -195,6 +208,8 @@ const iconPaths = {
     "M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.2a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.8l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.2a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.2a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.8v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.2a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   image:
     "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4 M21 9V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v4 M3 15l5-5 4 4 2-2 7 7 M14 8h.01",
+  memory:
+    "M4 19.5A2.5 2.5 0 0 1 6.5 17H20 M4 4.5A2.5 2.5 0 0 1 6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15z M8 6h8 M8 10h8 M8 14h5",
   moon:
     "M21 12.8A9 9 0 1 1 11.2 3 7 7 0 0 0 21 12.8z",
   refresh:
@@ -953,6 +968,168 @@ function buildPersonaEditor(cfg: ConfigSnapshot): HTMLElement {
   return overlay;
 }
 
+function buildMemoryPanel(): HTMLElement {
+  const overlay = el("div", { class: "settings-overlay" });
+  const panel = el("section", { class: "settings-panel memory-panel", role: "dialog", "aria-modal": "true" });
+  const status = el("div", { class: "settings-status", style: "display:none" });
+  const queryInput = el("input", { type: "text", placeholder: "Search memories" }) as HTMLInputElement;
+  const includeArchived = el("input", { type: "checkbox" }) as HTMLInputElement;
+  const kindSelect = el("select") as HTMLSelectElement;
+  ["fact", "preference", "project", "relationship", "note"].forEach((value) => {
+    kindSelect.append(option(value, value, "note"));
+  });
+  const pinnedInput = el("input", { type: "checkbox" }) as HTMLInputElement;
+  const contentInput = el("textarea", {
+    class: "memory-editor",
+    rows: "4",
+    spellcheck: "true",
+    placeholder: "Add a stable fact, preference, project note, or relationship detail.",
+  }) as HTMLTextAreaElement;
+  const list = el("div", { class: "memory-list" });
+  let memories: MemoryItem[] = [];
+  let editingId: string | null = null;
+
+  const resetEditor = () => {
+    editingId = null;
+    kindSelect.value = "note";
+    pinnedInput.checked = false;
+    contentInput.value = "";
+  };
+
+  const renderMemories = () => {
+    list.replaceChildren();
+    if (memories.length === 0) {
+      list.append(el("div", { class: "memory-empty" }, "No memories."));
+      return;
+    }
+    memories.forEach((memory) => {
+      const meta = `${memory.kind}${memory.pinned ? " · pinned" : ""}${memory.archived ? " · archived" : ""}`;
+      const editBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Edit");
+      const pinBtn = el("button", { class: "btn btn-secondary", type: "button" }, memory.pinned ? "Unpin" : "Pin");
+      const archiveBtn = el("button", { class: "btn btn-secondary", type: "button" }, memory.archived ? "Restore" : "Archive");
+      const deleteBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Delete");
+
+      editBtn.addEventListener("click", () => {
+        editingId = memory.id;
+        kindSelect.value = memory.kind;
+        pinnedInput.checked = memory.pinned;
+        contentInput.value = memory.content;
+        contentInput.focus();
+      });
+      pinBtn.addEventListener("click", async () => {
+        await updateMemory(memory.id, { pinned: !memory.pinned });
+      });
+      archiveBtn.addEventListener("click", async () => {
+        await updateMemory(memory.id, { archived: !memory.archived });
+      });
+      deleteBtn.addEventListener("click", async () => {
+        try {
+          await invoke("delete_memory", { id: memory.id });
+          setStatus(status, true, "Deleted memory.");
+          await loadMemories();
+        } catch (error) {
+          setStatus(status, false, String(error));
+        }
+      });
+
+      list.append(
+        el(
+          "article",
+          { class: "memory-item" },
+          el("div", { class: "memory-item-meta" }, meta),
+          el("div", { class: "memory-item-content" }, memory.content),
+          el("div", { class: "memory-item-actions" }, editBtn, pinBtn, archiveBtn, deleteBtn),
+        ),
+      );
+    });
+  };
+
+  const loadMemories = async () => {
+    try {
+      const raw = await invoke<string>("list_memories", {
+        query: queryInput.value.trim() || null,
+        includeArchived: includeArchived.checked,
+      });
+      memories = JSON.parse(raw) as MemoryItem[];
+      renderMemories();
+    } catch (error) {
+      setStatus(status, false, String(error));
+    }
+  };
+
+  const updateMemory = async (id: string, patch: Partial<MemoryItem>) => {
+    try {
+      await invoke("update_memory", { id, patch });
+      setStatus(status, true, "Updated memory.");
+      await loadMemories();
+    } catch (error) {
+      setStatus(status, false, String(error));
+    }
+  };
+
+  const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("check", 16), "Save");
+  const newBtn = el("button", { class: "btn btn-secondary", type: "button" }, "New");
+  const reloadBtn = el("button", { class: "btn btn-secondary", type: "button" }, icon("refresh", 16), "Load");
+  const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Close");
+
+  saveBtn.addEventListener("click", async () => {
+    const content = contentInput.value.trim();
+    if (!content) {
+      setStatus(status, false, "Memory content is empty.");
+      return;
+    }
+    try {
+      if (editingId) {
+        await invoke("update_memory", {
+          id: editingId,
+          patch: { kind: kindSelect.value, content, pinned: pinnedInput.checked },
+        });
+        setStatus(status, true, "Updated memory.");
+      } else {
+        await invoke("create_memory", {
+          kind: kindSelect.value,
+          content,
+          source: "user",
+          pinned: pinnedInput.checked,
+        });
+        setStatus(status, true, "Created memory.");
+      }
+      resetEditor();
+      await loadMemories();
+    } catch (error) {
+      setStatus(status, false, String(error));
+    }
+  });
+  newBtn.addEventListener("click", resetEditor);
+  reloadBtn.addEventListener("click", () => void loadMemories());
+  queryInput.addEventListener("input", () => void loadMemories());
+  includeArchived.addEventListener("change", () => void loadMemories());
+  closeBtn.addEventListener("click", () => overlay.remove());
+  overlay.addEventListener("click", (event) => {
+    if (event.target === overlay) overlay.remove();
+  });
+
+  panel.append(
+    el("h2", {}, "Memory"),
+    status,
+    el(
+      "div",
+      { class: "settings-section" },
+      fieldRow("Search", queryInput),
+      fieldRow("Archived", includeArchived),
+      fieldRow("Kind", kindSelect),
+      fieldRow("Pinned", pinnedInput),
+      fieldRow("Content", contentInput),
+      el("div", { class: "settings-actions" }, newBtn, reloadBtn, saveBtn),
+    ),
+    list,
+    el("div", { class: "settings-actions" }, closeBtn),
+  );
+  overlay.append(panel);
+  void loadMemories();
+  return overlay;
+}
+
 function buildImageTestPanel(): HTMLElement {
   const overlay = el("div", { class: "settings-overlay" });
   const panel = el("section", { class: "settings-panel", role: "dialog", "aria-modal": "true" });
@@ -1662,6 +1839,9 @@ async function buildApp() {
   const personaBtn = el("button", { class: "sidebar-btn", type: "button" }, icon("brush", 16), "Persona");
   personaBtn.addEventListener("click", () => document.body.append(buildPersonaEditor(cfg)));
 
+  const memoryBtn = el("button", { class: "sidebar-btn", type: "button" }, icon("memory", 16), "Memory");
+  memoryBtn.addEventListener("click", () => document.body.append(buildMemoryPanel()));
+
   const imageBtn = el("button", { class: "sidebar-btn", type: "button" }, icon("image", 16), "Image Test");
   imageBtn.addEventListener("click", () => document.body.append(buildImageTestPanel()));
 
@@ -1716,7 +1896,7 @@ async function buildApp() {
     ),
     el("div", { class: "sidebar-spacer" }),
     el("div", { class: "theme-toggle" }, icon("moon", 16), themeSelect),
-    el("div", { class: "sidebar-actions" }, personaBtn, imageBtn, companionBtn, settingsBtn),
+    el("div", { class: "sidebar-actions" }, personaBtn, memoryBtn, imageBtn, companionBtn, settingsBtn),
   );
 
   const main = el("main", { class: "main-content" });

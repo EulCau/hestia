@@ -1,5 +1,6 @@
 mod config;
 mod initiative;
+mod memory;
 mod multimodal;
 mod observability;
 mod personality;
@@ -24,6 +25,7 @@ use tracing::{error, info, warn};
 
 use crate::config::AppConfig;
 use crate::initiative::InitiativeRuntime;
+use crate::memory::MemoryPatch;
 use crate::multimodal::{
     build_comfyui_launch_command, comfyui_endpoint, resolve_project_path, screenshot_metadata,
 };
@@ -260,6 +262,38 @@ fn save_persona_content(profile: String, content: String) -> Result<String, Stri
     Ok("ok".into())
 }
 
+#[tauri::command]
+fn list_memories(query: Option<String>, include_archived: Option<bool>) -> Result<String, String> {
+    let memories = memory::list_memories(query.as_deref(), include_archived.unwrap_or(false))
+        .map_err(|e| format!("failed to list memories: {}", e))?;
+    serde_json::to_string(&memories).map_err(|e| format!("failed to serialize memories: {}", e))
+}
+
+#[tauri::command]
+fn create_memory(
+    kind: String,
+    content: String,
+    source: Option<String>,
+    pinned: Option<bool>,
+) -> Result<String, String> {
+    let memory = memory::create_memory(kind, content, source, pinned)
+        .map_err(|e| format!("failed to create memory: {}", e))?;
+    serde_json::to_string(&memory).map_err(|e| format!("failed to serialize memory: {}", e))
+}
+
+#[tauri::command]
+fn update_memory(id: String, patch: MemoryPatch) -> Result<String, String> {
+    let memory =
+        memory::update_memory(id, patch).map_err(|e| format!("failed to update memory: {}", e))?;
+    serde_json::to_string(&memory).map_err(|e| format!("failed to serialize memory: {}", e))
+}
+
+#[tauri::command]
+fn delete_memory(id: String) -> Result<String, String> {
+    memory::delete_memory(id).map_err(|e| format!("failed to delete memory: {}", e))?;
+    Ok("ok".into())
+}
+
 // ── Mutate commands ──
 
 #[tauri::command]
@@ -357,7 +391,16 @@ async fn request_initiative_message(
 
     let assembler = PromptAssembler::load(&state.config.personality.default_profile)
         .map_err(|e| format!("failed to load persona: {}", e))?;
-    let messages = assembler.assemble_messages(&decision.suggested_prompt, &history);
+    let memories = memory::relevant_memories(&decision.suggested_prompt, 6).unwrap_or_else(|e| {
+        warn!(error = %e, "failed to load initiative memory context");
+        Vec::new()
+    });
+    let memory_context = memory::format_memory_context(&memories);
+    let messages = assembler.assemble_messages_with_context(
+        &decision.suggested_prompt,
+        &history,
+        memory_context.as_deref(),
+    );
     let mut job = crate::protocol::Job::new(
         "initiative_message",
         crate::protocol::Capability::Chat,
@@ -1056,7 +1099,13 @@ async fn send_chat_message(
 
     let persona_name = assembler.persona_name().to_string();
 
-    let messages = assembler.assemble_messages(&message, &history);
+    let memories = memory::relevant_memories(&message, 8).unwrap_or_else(|e| {
+        warn!(error = %e, "failed to load memory context");
+        Vec::new()
+    });
+    let memory_context = memory::format_memory_context(&memories);
+    let messages =
+        assembler.assemble_messages_with_context(&message, &history, memory_context.as_deref());
     let messages_json = serde_json::Value::Array(messages);
 
     if state.config.observability.prompt_logs {
@@ -1563,6 +1612,10 @@ pub fn run() {
             submit_test_job,
             get_persona_content,
             save_persona_content,
+            list_memories,
+            create_memory,
+            update_memory,
+            delete_memory,
             send_chat_message,
             generate_test_image,
         ])
