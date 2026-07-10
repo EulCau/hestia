@@ -1,51 +1,53 @@
 :root {
-  --bg-primary: #111318;
-  --bg-sidebar: #171a21;
-  --bg-chat: #14171d;
-  --bg-input: #1c2028;
-  --bg-settings: #181c23;
-  --bg-message-user: #23443f;
-  --bg-message-assistant: #20242d;
-  --bg-message-error: #3f1f24;
-  --bg-hover: #242934;
-  --border: #2c323d;
-  --border-input: #3a424f;
-  --border-focus: #5aa7a0;
-  --text-primary: #eceff3;
-  --text-secondary: #bcc4cf;
-  --text-muted: #7f8996;
-  --accent: #5aa7a0;
-  --accent-hover: #4a918b;
-  --accent-text: #7cc7bf;
-  --danger-text: #f7a8ad;
-  --status-ok-bg: #16342f;
+  --bg-primary: #0f1115;
+  --bg-sidebar: #151821;
+  --bg-chat: #101218;
+  --bg-input: #181c24;
+  --bg-settings: #171a22;
+  --bg-message-user: #1e4b44;
+  --bg-message-assistant: #1b1f29;
+  --bg-message-error: #3b2026;
+  --bg-hover: #202633;
+  --border: #2a303b;
+  --border-input: #343c49;
+  --border-focus: #66b8ad;
+  --text-primary: #f2f4f7;
+  --text-secondary: #c4cbd4;
+  --text-muted: #87919f;
+  --accent: #66b8ad;
+  --accent-hover: #56a49a;
+  --accent-text: #8dd8cf;
+  --danger-text: #ffb0b8;
+  --status-ok-bg: #173b36;
   --overlay: rgba(4, 7, 12, 0.58);
   --input-text: #eceff3;
-  --btn-text: #081514;
+  --btn-text: #071413;
   --select-bg: #1c2028;
   --select-border: #3a424f;
-  --shadow: rgba(0, 0, 0, 0.28);
+  --shadow: rgba(0, 0, 0, 0.34);
+  --surface: #151922;
+  --surface-raised: #1a1f29;
 }
 
 [data-theme="light"] {
-  --bg-primary: #f6f7f4;
-  --bg-sidebar: #ecefe9;
-  --bg-chat: #fbfbf8;
+  --bg-primary: #f3f5f7;
+  --bg-sidebar: #ffffff;
+  --bg-chat: #f7f8fa;
   --bg-input: #ffffff;
   --bg-settings: #ffffff;
-  --bg-message-user: #d8ece6;
-  --bg-message-assistant: #ecefed;
-  --bg-message-error: #f9dddd;
-  --bg-hover: #e1e7e4;
-  --border: #d4dad4;
-  --border-input: #c8d0cb;
-  --border-focus: #43877f;
-  --text-primary: #202522;
-  --text-secondary: #4b5550;
-  --text-muted: #77817b;
-  --accent: #43877f;
-  --accent-hover: #376f69;
-  --accent-text: #2f6f67;
+  --bg-message-user: #d8eee9;
+  --bg-message-assistant: #ffffff;
+  --bg-message-error: #fff0f1;
+  --bg-hover: #eef2f4;
+  --border: #dde3e8;
+  --border-input: #cdd5dc;
+  --border-focus: #3f8b82;
+  --text-primary: #1f252c;
+  --text-secondary: #4c5865;
+  --text-muted: #7a8794;
+  --accent: #3f8b82;
+  --accent-hover: #34766e;
+  --accent-text: #2e756d;
   --danger-text: #a43d45;
   --status-ok-bg: #d9eee8;
   --overlay: rgba(20, 26, 24, 0.24);
@@ -54,6 +56,8 @@
   --select-bg: #ffffff;
   --select-border: #c8d0cb;
   --shadow: rgba(31, 41, 55, 0.16);
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
 }
 
 *, *::before, *::after {
@@ -97,7 +101,8 @@ button {
 }
 
 .app-layout {
-  display: flex;
+  display: grid;
+  grid-template-columns: 264px minmax(0, 1fr);
   height: 100%;
   width: 100%;
   min-width: 0;
@@ -105,23 +110,21 @@ button {
 }
 
 .sidebar {
-  width: 232px;
-  flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 22px 16px;
+  gap: 14px;
+  padding: 18px;
   background: var(--bg-sidebar);
   border-right: 1px solid var(--border);
 }
 
 .avatar-container {
-  width: 132px;
-  height: 168px;
-  margin: 0 auto 2px;
+  width: 96px;
+  height: 122px;
+  margin: 0 auto;
   overflow: hidden;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--bg-chat);
 }
 
@@ -146,30 +149,33 @@ button {
 
 .companion-name {
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: 0.98rem;
   font-weight: 650;
   text-align: center;
 }
 
 .companion-status {
   display: grid;
-  gap: 8px;
-  padding: 10px 0;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
 }
 
 .status-line {
   display: grid;
-  grid-template-columns: 8px 1fr auto;
+  grid-template-columns: 7px 1fr auto;
   align-items: center;
-  gap: 8px;
+  gap: 7px;
   min-width: 0;
   color: var(--text-secondary);
-  font-size: 0.78rem;
+  font-size: 0.74rem;
 }
 
 .status-dot {
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   background: var(--text-muted);
 }
@@ -196,11 +202,11 @@ button {
 .theme-toggle,
 .sidebar-actions {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
 .theme-toggle {
-  grid-template-columns: 24px 1fr;
+  grid-template-columns: 22px 1fr;
   align-items: center;
   color: var(--text-muted);
 }
@@ -217,9 +223,9 @@ button {
 .persona-editor {
   width: 100%;
   min-width: 0;
-  padding: 8px 10px;
+  padding: 9px 10px;
   border: 1px solid var(--border-input);
-  border-radius: 6px;
+  border-radius: 7px;
   outline: none;
   background: var(--bg-input);
   color: var(--input-text);
@@ -238,8 +244,8 @@ button {
   align-items: center;
   gap: 9px;
   width: 100%;
-  min-height: 36px;
-  padding: 8px 10px;
+  min-height: 38px;
+  padding: 8px 11px;
   border: 1px solid transparent;
   border-radius: 7px;
   background: transparent;
@@ -255,30 +261,35 @@ button {
 }
 
 .main-content {
-  flex: 1;
   min-width: 0;
   display: flex;
   container-type: inline-size;
+  justify-content: center;
+  background: var(--bg-chat);
 }
 
 .chat-container {
   flex: 1;
   min-width: 0;
-  width: 100%;
+  width: min(100%, 1040px);
   display: flex;
   flex-direction: column;
+  border-left: 1px solid color-mix(in srgb, var(--border), transparent 40%);
+  border-right: 1px solid color-mix(in srgb, var(--border), transparent 40%);
+  background: var(--bg-chat);
 }
 
 .chat-header {
-  min-height: 58px;
+  min-height: 64px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 22px;
+  padding: 0 24px;
   border-bottom: 1px solid var(--border);
-  color: var(--text-secondary);
-  font-weight: 650;
+  color: var(--text-primary);
+  font-size: 0.98rem;
+  font-weight: 700;
 }
 
 .chat-header-actions {
@@ -287,14 +298,14 @@ button {
 }
 
 .icon-btn {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--border);
-  border-radius: 7px;
-  background: transparent;
+  border-radius: 8px;
+  background: var(--surface);
   color: var(--text-muted);
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
@@ -311,15 +322,15 @@ button {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
   overflow-y: auto;
-  padding: 22px;
+  padding: 28px 24px;
 }
 
 .message {
-  max-width: min(880px, 82%);
-  padding: 10px 13px;
-  border: 1px solid transparent;
+  max-width: min(760px, 78%);
+  padding: 11px 14px;
+  border: 1px solid var(--border);
   border-radius: 8px;
   color: var(--text-primary);
   font-size: 0.92rem;
@@ -352,12 +363,14 @@ button {
 .message.user {
   align-self: flex-end;
   background: var(--bg-message-user);
+  border-color: transparent;
 }
 
 .message.assistant,
 .message.loading {
   align-self: flex-start;
   background: var(--bg-message-assistant);
+  box-shadow: 0 8px 28px color-mix(in srgb, var(--shadow), transparent 40%);
 }
 
 .message.assistant[data-rewritten="true"] {
@@ -391,19 +404,19 @@ button {
   flex-shrink: 0;
   display: grid;
   grid-template-columns: 1fr auto auto auto;
-  gap: 10px;
+  gap: 9px;
   align-items: end;
-  padding: 14px 22px 18px;
+  padding: 16px 24px 20px;
   border-top: 1px solid var(--border);
-  background: var(--bg-chat);
+  background: var(--surface);
 }
 
 #chat-input {
   width: 100%;
-  min-height: 42px;
+  min-height: 44px;
   max-height: 120px;
   resize: vertical;
-  padding: 11px 13px;
+  padding: 12px 13px;
   border: 1px solid var(--border-input);
   border-radius: 8px;
   outline: none;
@@ -424,7 +437,7 @@ button {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  min-height: 42px;
+  min-height: 44px;
   padding: 0 16px;
   border: 1px solid var(--accent);
   border-radius: 8px;
@@ -675,7 +688,7 @@ button {
 }
 
 .companion-body #app {
-  background: var(--bg-primary);
+  background: transparent;
   user-select: none;
   -webkit-user-select: none;
 }
@@ -684,10 +697,10 @@ button {
   width: 100%;
   height: 100%;
   display: grid;
-  grid-template-rows: auto 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
   align-items: center;
   justify-items: center;
-  padding: 10px 10px 12px;
+  padding: 8px 8px 12px;
   background: transparent;
   position: relative;
   cursor: grab;
@@ -699,8 +712,8 @@ button {
 
 .companion-avatar {
   grid-row: 2;
-  width: min(86vw, 250px);
-  height: min(78vh, 310px);
+  width: min(90vw, 270px);
+  height: min(82vh, 330px);
   display: block;
   padding: 0;
   border: 0;
@@ -779,7 +792,7 @@ button {
 }
 
 .companion-dialog-body #app {
-  background: var(--bg-primary);
+  background: transparent;
 }
 
 .companion-dialog-panel {
@@ -787,18 +800,19 @@ button {
   height: 100%;
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
-  gap: 8px;
+  gap: 10px;
   overflow: hidden;
-  padding: 10px;
+  padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  background: var(--bg-message-assistant);
+  background: color-mix(in srgb, var(--surface-raised), transparent 5%);
   color: var(--text-primary);
   font-size: 0.82rem;
   line-height: 1.45;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+  box-shadow: 0 14px 40px var(--shadow);
 }
 
 .companion-dialog-panel[data-placement="bottom"] {
@@ -815,46 +829,64 @@ button {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 6px;
-  visibility: hidden;
+  gap: 7px;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-raised), transparent 8%);
+  box-shadow: 0 12px 34px var(--shadow);
+  opacity: 0;
+  transform: translateY(-4px);
   pointer-events: none;
+  transition: opacity 130ms ease, transform 130ms ease;
 }
 
 .companion-surface.controls-visible .companion-controls {
-  visibility: visible;
+  opacity: 1;
+  transform: translateY(0);
   pointer-events: auto;
 }
 
 .companion-control {
-  min-height: 26px;
-  padding: 4px 7px;
+  width: 30px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid var(--border);
-  border-radius: 7px;
-  background: var(--bg-message-assistant);
+  border-radius: 999px;
+  background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
-  font-size: 0.72rem;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.companion-control:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 .companion-control.active {
   border-color: var(--accent);
   color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent), transparent 84%);
 }
 
 .companion-dialogue-messages {
   min-height: 0;
   display: grid;
   align-content: start;
-  gap: 6px;
+  gap: 8px;
   overflow-y: auto;
   padding-right: 2px;
 }
 
 .companion-dialogue-message {
   max-width: 100%;
-  padding: 6px 8px;
+  padding: 7px 9px;
   border-radius: 7px;
-  background: var(--bg-hover);
+  border: 1px solid var(--border);
+  background: var(--bg-message-assistant);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -872,15 +904,15 @@ button {
 .companion-dialogue-input-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
+  gap: 8px;
 }
 
 .companion-dialogue-input {
   width: 100%;
-  min-height: 34px;
+  min-height: 36px;
   max-height: 72px;
   resize: none;
-  padding: 7px 8px;
+  padding: 8px 9px;
   border: 1px solid var(--border-input);
   border-radius: 7px;
   outline: none;
@@ -894,13 +926,13 @@ button {
 }
 
 .companion-dialogue-send {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   border: 1px solid var(--accent);
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--accent);
   color: var(--btn-text);
   cursor: pointer;
@@ -908,16 +940,18 @@ button {
 
 .companion-resize {
   position: absolute;
-  right: 6px;
-  bottom: 6px;
-  width: 18px;
-  height: 18px;
+  right: 8px;
+  bottom: 8px;
+  width: 20px;
+  height: 20px;
   border: 0;
+  border-radius: 6px;
   background:
     linear-gradient(135deg, transparent 0 45%, var(--text-muted) 45% 55%, transparent 55%),
     linear-gradient(135deg, transparent 0 64%, var(--text-muted) 64% 74%, transparent 74%);
-  visibility: hidden;
+  opacity: 0;
   cursor: se-resize;
+  transition: opacity 120ms ease;
 }
 
 .companion-surface.is-resizing,
@@ -926,12 +960,13 @@ button {
 }
 
 .companion-surface:hover .companion-resize {
-  visibility: visible;
+  opacity: 0.75;
 }
 
 @media (max-width: 720px) {
   .app-layout {
-    flex-direction: column;
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
   }
 
   .sidebar {
@@ -977,5 +1012,17 @@ button {
 
   .message {
     max-width: 94%;
+  }
+
+  .chat-container {
+    border-left: 0;
+    border-right: 0;
+  }
+
+  .chat-header,
+  .chat-messages,
+  .chat-input-area {
+    padding-left: 14px;
+    padding-right: 14px;
   }
 }

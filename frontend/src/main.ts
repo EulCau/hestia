@@ -183,8 +183,12 @@ const iconPaths = {
     "M12 20h9 M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z",
   check:
     "M20 6 9 17l-5-5",
+  chevronsUp:
+    "M7 11l5-5 5 5 M7 18l5-5 5 5",
   companion:
     "M4 10l2-5 4 3h4l4-3 2 5v5a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6v-5z M9 14h.01 M15 14h.01 M10 17c1.3.8 2.7.8 4 0",
+  message:
+    "M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4v8z",
   eye:
     "M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
   gear:
@@ -1807,11 +1811,11 @@ async function buildCompanionView() {
 
   const shell = el("main", { class: "companion-surface" });
   const controls = el("div", { class: "companion-controls" });
-  const pinBtn = el("button", { class: "companion-control active", type: "button", title: "Always on top", "aria-label": "Always on top" }, "Top");
-  const proactiveBtn = el("button", { class: proactiveEnabled ? "companion-control active" : "companion-control", type: "button", title: "Proactive speech", "aria-label": "Proactive speech" }, "Talk");
-  const openMainBtn = el("button", { class: "companion-control", type: "button", title: "Open chat window", "aria-label": "Open chat window" }, "Chat");
-  const dialogBtn = el("button", { class: "companion-control", type: "button", title: "Dialogue", "aria-label": "Dialogue" }, "Bubble");
-  const closeBtn = el("button", { class: "companion-control", type: "button", title: "Close companion", "aria-label": "Close companion" }, "Close");
+  const pinBtn = el("button", { class: "companion-control active", type: "button", title: "Always on top", "aria-label": "Always on top" }, icon("chevronsUp", 15));
+  const proactiveBtn = el("button", { class: proactiveEnabled ? "companion-control active" : "companion-control", type: "button", title: "Proactive speech", "aria-label": "Proactive speech" }, icon("sparkles", 15));
+  const openMainBtn = el("button", { class: "companion-control", type: "button", title: "Open chat window", "aria-label": "Open chat window" }, icon("message", 15));
+  const dialogBtn = el("button", { class: "companion-control", type: "button", title: "Dialogue", "aria-label": "Dialogue" }, icon("send", 15));
+  const closeBtn = el("button", { class: "companion-control", type: "button", title: "Close companion", "aria-label": "Close companion" }, icon("x", 15));
   controls.append(pinBtn, proactiveBtn, openMainBtn, dialogBtn, closeBtn);
 
   const avatar = el("div", {
