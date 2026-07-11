@@ -12,7 +12,7 @@ INCLUDE_APPIMAGE=1 scripts/package-linux.sh
 
 The Linux script builds Tauri `deb` and `rpm` bundles and, when `makepkg` is available, an Arch Linux `.pkg.tar.zst`.
 
-The Arch package step uses `makepkg -d` so the build host does not need to install every runtime dependency just to assemble the package. Package managers still resolve the declared dependencies when users install the produced package.
+The Arch package step uses `makepkg -d` so the build host does not need to install every runtime dependency just to assemble the package. Package managers still resolve the declared dependencies when users install the produced package. The generated Arch package depends on `webkit2gtk-4.1`, `gtk3`, and `libayatana-appindicator`.
 
 AppImage is optional because it depends on `linuxdeploy`/AppImage tooling that is often absent or broken on otherwise valid distro build hosts. Use `INCLUDE_APPIMAGE=1` to attempt it. Set `STRICT_APPIMAGE=1` if AppImage failure should fail the whole command.
 
