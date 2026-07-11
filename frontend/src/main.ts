@@ -6,6 +6,7 @@ import { currentMonitor, getCurrentWindow, Window } from "@tauri-apps/api/window
 import * as PIXI from "pixi.js";
 import type { Live2DModel as Live2DModelInstance } from "pixi-live2d-display/cubism4";
 import "./style.css";
+import { availableLanguages, setLanguage, t } from "./i18n";
 
 declare global {
   interface Window {
@@ -26,6 +27,7 @@ interface ConfigSnapshot {
   app: {
     name: string;
     theme: { mode: string };
+    language: { ui: string; system_prompt: string; memory: string };
     avatar: {
       enabled: boolean;
       image_path: string;
@@ -1037,11 +1039,11 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
   const status = el("div", { class: "settings-status", style: "display:none" });
   const roleSelect = el("select") as HTMLSelectElement;
   const idInput = el("input", { type: "text", placeholder: "role-id" }) as HTMLInputElement;
-  const nameInput = el("input", { type: "text", placeholder: "称呼, e.g. Hestia" }) as HTMLInputElement;
+  const nameInput = el("input", { type: "text", placeholder: "Name, e.g. Hestia" }) as HTMLInputElement;
   const aliasesInput = el("input", { type: "text", placeholder: "Aliases separated by comma" }) as HTMLInputElement;
-  const identityInput = el("input", { type: "text", placeholder: "身份" }) as HTMLInputElement;
-  const speciesInput = el("input", { type: "text", placeholder: "物种" }) as HTMLInputElement;
-  const appearanceInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "形象" }) as HTMLTextAreaElement;
+  const identityInput = el("input", { type: "text", placeholder: t("role.identity") }) as HTMLInputElement;
+  const speciesInput = el("input", { type: "text", placeholder: t("role.species") }) as HTMLInputElement;
+  const appearanceInput = el("textarea", { class: "role-editor", rows: "3", placeholder: t("role.appearance") }) as HTMLTextAreaElement;
   const avatarEnabled = el("input", { type: "checkbox" }) as HTMLInputElement;
   const avatarType = el("select") as HTMLSelectElement;
   [
@@ -1049,13 +1051,13 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
     ["live2d", "Live2D"],
     ["digital_human", "3D"],
   ].forEach(([value, label]) => avatarType.append(option(value, label, "placeholder")));
-  const avatarPath = el("input", { type: "text", placeholder: "角色形象资源路径" }) as HTMLInputElement;
-  const avatarBrowse = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
-  const avatarHint = el("div", { class: "settings-hint" }, "选择图片或 Live2D 目录后会复制到当前角色资源目录.");
-  const personalityInput = el("textarea", { class: "role-editor", rows: "4", placeholder: "性格" }) as HTMLTextAreaElement;
-  const languageInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "语言习惯" }) as HTMLTextAreaElement;
-  const scenarioInput = el("textarea", { class: "role-editor", rows: "3", placeholder: "使用场景" }) as HTMLTextAreaElement;
-  const toneInput = el("input", { type: "text", placeholder: "总体语气" }) as HTMLInputElement;
+  const avatarPath = el("input", { type: "text", placeholder: t("role.avatarPlaceholder") }) as HTMLInputElement;
+  const avatarBrowse = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse"));
+  const avatarHint = el("div", { class: "settings-hint" }, t("role.avatarHint"));
+  const personalityInput = el("textarea", { class: "role-editor", rows: "4", placeholder: t("role.personality") }) as HTMLTextAreaElement;
+  const languageInput = el("textarea", { class: "role-editor", rows: "3", placeholder: t("role.language") }) as HTMLTextAreaElement;
+  const scenarioInput = el("textarea", { class: "role-editor", rows: "3", placeholder: t("role.scenario") }) as HTMLTextAreaElement;
+  const toneInput = el("input", { type: "text", placeholder: t("role.tone") }) as HTMLInputElement;
   const pinnedInput = el("input", { type: "checkbox" }) as HTMLInputElement;
   const pathHint = el("div", { class: "artifact-path" });
   let roles: RoleProfile[] = [];
@@ -1137,7 +1139,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
   avatarBrowse.addEventListener("click", async () => {
     const role = roleFromForm();
     if (!role.id) {
-      avatarHint.textContent = "Set a role ID or name before selecting avatar content.";
+      avatarHint.textContent = t("role.setIdFirst");
       return;
     }
     const selected =
@@ -1158,35 +1160,35 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
         modelType: avatarType.value,
       });
       avatarEnabled.checked = true;
-      avatarHint.textContent = "Avatar content copied into this role's asset directory.";
+      avatarHint.textContent = t("role.avatarCopied");
     } catch (error) {
-      avatarHint.textContent = `Avatar selection failed: ${String(error)}`;
+      avatarHint.textContent = t("settings.avatarSelectionFailed", { error: String(error) });
     }
   });
 
   avatarType.addEventListener("change", () => {
     if (avatarType.value === "live2d") {
-      avatarPath.placeholder = "Select a Live2D runtime directory";
-      avatarHint.textContent = "Choose a directory containing a .model3.json file. Files are copied to the current role asset directory.";
+      avatarPath.placeholder = t("settings.live2dPlaceholder");
+      avatarHint.textContent = t("role.live2dHint");
     } else if (avatarType.value === "digital_human") {
-      avatarPath.placeholder = "Path to copied .vrm, .glb, or .gltf";
-      avatarHint.textContent = "3D content is copied and stored now; rendering still requires a future 3D adapter.";
+      avatarPath.placeholder = t("role.digitalHumanPlaceholder");
+      avatarHint.textContent = t("role.digitalHumanHint");
     } else {
-      avatarPath.placeholder = "Path to copied image file";
-      avatarHint.textContent = "Choose an image file. It is copied to the current role asset directory.";
+      avatarPath.placeholder = t("role.imagePlaceholder");
+      avatarHint.textContent = t("role.imageHint");
     }
   });
 
-  const newBtn = el("button", { class: "btn btn-secondary", type: "button" }, "New");
-  const generateBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Generate");
-  const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("check", 16), "Save");
-  const activateBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Use");
-  const deleteBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Delete");
-  const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Close");
+  const newBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("role.new"));
+  const generateBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("role.generate"));
+  const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("check", 16), t("role.save"));
+  const activateBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("role.activate"));
+  const deleteBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("role.delete"));
+  const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("role.close"));
 
   newBtn.addEventListener("click", () => {
     void applyRole(emptyRole());
-    setStatus(status, true, "Editing new role.");
+    setStatus(status, true, t("role.editingNew"));
   });
   generateBtn.addEventListener("click", async () => {
     generateBtn.setAttribute("disabled", "true");
@@ -1197,7 +1199,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
         }),
       ) as RoleProfile;
       await applyRole({ ...emptyRole(), ...generated });
-      setStatus(status, true, "Generated role draft. Review and save it.");
+      setStatus(status, true, t("role.generatedDraft"));
     } catch (error) {
       setStatus(status, false, String(error));
     } finally {
@@ -1211,7 +1213,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
       await invoke("set_active_role", { profile: role.id });
       cfg.personality.default_profile = role.id;
       onRoleChange(role.id);
-      setStatus(status, true, `Saved and activated ${role.name}.`);
+      setStatus(status, true, t("role.savedActivated", { name: role.name }));
       await loadRoles(role.id);
     } catch (error) {
       setStatus(status, false, String(error));
@@ -1223,7 +1225,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
       await invoke("set_active_role", { profile: role.id });
       cfg.personality.default_profile = role.id;
       onRoleChange(role.id);
-      setStatus(status, true, `Activated ${role.name || role.id}.`);
+      setStatus(status, true, t("role.activated", { name: role.name || role.id }));
     } catch (error) {
       setStatus(status, false, String(error));
     }
@@ -1231,7 +1233,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
   deleteBtn.addEventListener("click", async () => {
     const role = roleFromForm();
     const expected = `我确认删除${role.id}`;
-    const confirmation = window.prompt(`Type exactly: ${expected}`);
+    const confirmation = window.prompt(t("role.deletePrompt", { text: expected }));
     if (confirmation === null) return;
     try {
       await invoke("delete_role", { profile: role.id, confirmation });
@@ -1239,7 +1241,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
         cfg.personality.default_profile = "default";
         onRoleChange("default");
       }
-      setStatus(status, true, `Deleted ${role.id}.`);
+      setStatus(status, true, t("role.deleted", { id: role.id }));
       await loadRoles(cfg.personality.default_profile);
     } catch (error) {
       setStatus(status, false, String(error));
@@ -1251,27 +1253,27 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
   });
 
   panel.append(
-    el("h2", {}, "Roles"),
+    el("h2", {}, t("role.title")),
     status,
     el(
       "div",
       { class: "settings-section" },
-      fieldRow("Select", roleSelect),
-      fieldRow("ID", idInput, "Stable config file id. Use lowercase ASCII, digits, '_' or '-'."),
-      fieldRow("Name", nameInput, "This and aliases are treated as references to the role itself."),
-      fieldRow("Aliases", aliasesInput),
-      fieldRow("Identity", identityInput),
-      fieldRow("Species", speciesInput),
-      fieldRow("Appearance", appearanceInput),
-      fieldRow("Avatar enabled", avatarEnabled),
-      fieldRow("Avatar type", avatarType),
-      fieldRow("Avatar content", el("div", { class: "inline-controls" }, avatarPath, avatarBrowse)),
+      fieldRow(t("role.select"), roleSelect),
+      fieldRow(t("role.id"), idInput, t("role.idHint")),
+      fieldRow(t("role.name"), nameInput, t("role.nameHint")),
+      fieldRow(t("role.aliases"), aliasesInput),
+      fieldRow(t("role.identity"), identityInput),
+      fieldRow(t("role.species"), speciesInput),
+      fieldRow(t("role.appearance"), appearanceInput),
+      fieldRow(`${t("role.avatar")} ${t("settings.enable").toLowerCase()}`, avatarEnabled),
+      fieldRow(`${t("role.avatar")} ${t("settings.type").toLowerCase()}`, avatarType),
+      fieldRow(`${t("role.avatar")} ${t("settings.content").toLowerCase()}`, el("div", { class: "inline-controls" }, avatarPath, avatarBrowse)),
       avatarHint,
-      fieldRow("Personality", personalityInput),
-      fieldRow("Language", languageInput),
-      fieldRow("Scenario", scenarioInput),
-      fieldRow("Tone", toneInput),
-      fieldRow("Pinned", pinnedInput),
+      fieldRow(t("role.personality"), personalityInput),
+      fieldRow(t("role.language"), languageInput),
+      fieldRow(t("role.scenario"), scenarioInput),
+      fieldRow(t("role.tone"), toneInput),
+      fieldRow(t("role.pinned"), pinnedInput),
       pathHint,
       el("div", { class: "settings-actions" }, newBtn, generateBtn, saveBtn, activateBtn, deleteBtn, closeBtn),
     ),
@@ -1635,7 +1637,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
 
   const apiKeyInput = el("input", {
     type: "password",
-    placeholder: cfg.remote_api.has_api_key ? "Existing key is set" : "sk-...",
+    placeholder: cfg.remote_api.has_api_key ? t("settings.existingKey") : "sk-...",
   }) as HTMLInputElement;
   const baseUrlInput = el("input", { type: "text", value: cfg.remote_api.base_url }) as HTMLInputElement;
   const modelInput = el("input", { type: "text", value: cfg.remote_api.model }) as HTMLInputElement;
@@ -1655,11 +1657,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     value: cfg.app.avatar.image_path || "",
     placeholder: "companion-cat-placeholder.png",
   }) as HTMLInputElement;
-  const avatarHint = el(
-    "span",
-    { class: "hint" },
-    "Image uses a raster file. Live2D uses a .model3.json file. 3D is reserved for future VRM/GLB sidecars.",
-  );
+  const avatarHint = el("span", { class: "hint" }, t("settings.avatarHint"));
   const avatarAutoSelect = el("input", { type: "checkbox" }) as HTMLInputElement;
   avatarAutoSelect.checked = cfg.app.avatar.auto_select;
   const avatarIdleExpression = el("input", {
@@ -1732,7 +1730,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     value: cfg.local_llm.unload_command || "",
     placeholder: "Use process SIGTERM",
   }) as HTMLInputElement;
-  const modelHint = el("span", { class: "hint" }, "Scan the configured models_dir for .gguf files.");
+  const modelHint = el("span", { class: "hint" }, t("settings.scanHint"));
 
   const comfyEnabled = el("input", { type: "checkbox" }) as HTMLInputElement;
   comfyEnabled.checked = cfg.multimodal.comfyui.enabled;
@@ -1774,7 +1772,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   visionEnabled.checked = cfg.multimodal.vision.enabled;
   const visionApiKey = el("input", {
     type: "password",
-    placeholder: cfg.multimodal.vision.has_api_key ? "Existing key is set" : "MOONSHOT_API_KEY",
+    placeholder: cfg.multimodal.vision.has_api_key ? t("settings.existingKey") : "MOONSHOT_API_KEY",
   }) as HTMLInputElement;
   const visionBaseUrl = el("input", {
     type: "text",
@@ -1827,8 +1825,8 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     }
   });
 
-  const browseBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Browse") as HTMLButtonElement;
-  const scanBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Scan") as HTMLButtonElement;
+  const browseBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse")) as HTMLButtonElement;
+  const scanBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.scan")) as HTMLButtonElement;
 
   browseBtn.addEventListener("click", async () => {
     const selected = await open({ multiple: false, filters: [{ name: "GGUF Models", extensions: ["gguf"] }] });
@@ -1842,7 +1840,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     try {
       const models = JSON.parse(await invoke<string>("list_available_models")) as ModelInfo[];
       if (models.length === 0) {
-        modelHint.textContent = "No .gguf models found in models_dir.";
+        modelHint.textContent = t("settings.noModels");
         return;
       }
       modelHint.textContent = models
@@ -1850,15 +1848,15 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
         .map((model) => `${model.manufacturer}/${model.model_name}`)
         .join(", ");
       if (models.length > 4) {
-        modelHint.textContent += `, +${models.length - 4} more`;
+        modelHint.textContent += `, ${t("settings.moreModels", { count: models.length - 4 })}`;
       }
     } catch (error) {
-      modelHint.textContent = `Scan failed: ${String(error)}`;
+      modelHint.textContent = t("settings.scanFailed", { error: String(error) });
     }
   });
 
-  const browseAvatar = el("button", { class: "btn btn-secondary", type: "button" }, "Browse") as HTMLButtonElement;
-  const live2dDebugBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Live2D Test") as HTMLButtonElement;
+  const browseAvatar = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse")) as HTMLButtonElement;
+  const live2dDebugBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.live2dTest")) as HTMLButtonElement;
   browseAvatar.addEventListener("click", async () => {
     const selected =
       avatarType.value === "live2d"
@@ -1878,55 +1876,55 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
         });
         avatarHint.textContent =
           avatarType.value === "live2d"
-            ? "Live2D content prepared under frontend/public/live2d."
+            ? t("settings.avatarPreparedLive2d")
             : avatarType.value === "placeholder"
-              ? "Image prepared under frontend/public/avatar."
-              : "3D model path stored for a future renderer.";
+              ? t("settings.avatarPreparedImage")
+              : t("settings.avatarPrepared3d");
       } catch (error) {
-        avatarHint.textContent = `Avatar selection failed: ${String(error)}`;
+        avatarHint.textContent = t("settings.avatarSelectionFailed", { error: String(error) });
       }
     }
   });
   live2dDebugBtn.addEventListener("click", () => {
     const modelPath = avatarPath.value.trim();
     if (avatarType.value !== "live2d" || !modelPath.endsWith(".model3.json")) {
-      avatarHint.textContent = "Select prepared Live2D content before testing.";
+      avatarHint.textContent = t("settings.live2dNeedsContent");
       return;
     }
     document.body.append(buildLive2DDebugPanel(modelPath));
   });
   avatarType.addEventListener("change", () => {
     if (avatarType.value === "live2d") {
-      avatarPath.placeholder = "Select a Live2D runtime directory";
-      avatarHint.textContent = "Choose a directory containing a .model3.json file. The runtime files are copied to an ignored local public cache.";
+      avatarPath.placeholder = t("settings.live2dPlaceholder");
+      avatarHint.textContent = t("settings.live2dHint");
     } else if (avatarType.value === "digital_human") {
-      avatarPath.placeholder = "Path to .vrm, .glb, or .gltf";
-      avatarHint.textContent = "3D model selection is stored now; rendering requires a future VRM/GLB sidecar adapter.";
+      avatarPath.placeholder = t("settings.digitalHumanPlaceholder");
+      avatarHint.textContent = t("settings.digitalHumanHint");
     } else {
       avatarPath.placeholder = "companion-cat-placeholder.png";
-      avatarHint.textContent = "Select an image file or use a public-relative path.";
+      avatarHint.textContent = t("settings.imageHint");
     }
   });
 
-  const browseComfyRoot = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
+  const browseComfyRoot = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse"));
   browseComfyRoot.addEventListener("click", async () => {
     const selected = await open({ multiple: false, directory: true });
     if (selected && typeof selected === "string") comfyRootDir.value = selected;
   });
 
-  const browseComfyPython = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
+  const browseComfyPython = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse"));
   browseComfyPython.addEventListener("click", async () => {
     const selected = await open({ multiple: false });
     if (selected && typeof selected === "string") comfyPython.value = selected;
   });
 
-  const browseWorkflow = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
+  const browseWorkflow = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse"));
   browseWorkflow.addEventListener("click", async () => {
     const selected = await open({ multiple: false, filters: [{ name: "JSON Workflow", extensions: ["json"] }] });
     if (selected && typeof selected === "string") comfyWorkflow.value = selected;
   });
 
-  const browseOutputDir = el("button", { class: "btn btn-secondary", type: "button" }, "Browse");
+  const browseOutputDir = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse"));
   browseOutputDir.addEventListener("click", async () => {
     const selected = await open({ multiple: false, directory: true });
     if (selected && typeof selected === "string") comfyOutputDir.value = selected;
@@ -1934,11 +1932,28 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
 
   const themeSelect = el("select") as HTMLSelectElement;
   ["system", "dark", "light"].forEach((value) => {
-    themeSelect.append(option(value, value.charAt(0).toUpperCase() + value.slice(1), cfg.app.theme.mode));
+    themeSelect.append(option(value, t(`settings.theme.${value}`), cfg.app.theme.mode));
+  });
+  const uiLanguageSelect = el("select") as HTMLSelectElement;
+  const systemPromptLanguageSelect = el("select") as HTMLSelectElement;
+  const memoryLanguageSelect = el("select") as HTMLSelectElement;
+  availableLanguages().forEach((value) => {
+    uiLanguageSelect.append(option(value, t(`lang.${value}`), cfg.app.language.ui));
+    systemPromptLanguageSelect.append(option(value, t(`lang.${value}`), cfg.app.language.system_prompt));
+    memoryLanguageSelect.append(option(value, t(`lang.${value}`), cfg.app.language.memory));
+  });
+  uiLanguageSelect.addEventListener("change", () => {
+    setStatus(status, true, t("settings.saveToApply"));
+  });
+  systemPromptLanguageSelect.addEventListener("change", () => {
+    setStatus(status, true, t("settings.language.systemPromptHint"));
+  });
+  memoryLanguageSelect.addEventListener("change", () => {
+    setStatus(status, true, t("settings.language.memoryHint"));
   });
 
-  const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("check", 16), "Save");
-  const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Close");
+  const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("check", 16), t("settings.save"));
+  const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.close"));
 
   saveBtn.addEventListener("click", async () => {
     const updates: Record<string, string | boolean | number> = {};
@@ -1971,6 +1986,11 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     if (baseUrlInput.value !== cfg.remote_api.base_url) updates.base_url = baseUrlInput.value;
     if (modelInput.value !== cfg.remote_api.model) updates.model = modelInput.value;
     if (themeSelect.value !== cfg.app.theme.mode) updates.theme_mode = themeSelect.value;
+    if (uiLanguageSelect.value !== cfg.app.language.ui) updates.ui_language = uiLanguageSelect.value;
+    if (systemPromptLanguageSelect.value !== cfg.app.language.system_prompt) {
+      updates.system_prompt_language = systemPromptLanguageSelect.value;
+    }
+    if (memoryLanguageSelect.value !== cfg.app.language.memory) updates.memory_language = memoryLanguageSelect.value;
     if (backendSelect.value !== cfg.local_llm.backend) updates.local_llm_backend = backendSelect.value;
     if (localUrl !== cfg.local_llm.base_url) updates.local_llm_base_url = localUrl;
     if (localModel !== cfg.local_llm.model) updates.local_llm_model = localModel;
@@ -2020,7 +2040,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     }
 
     if (Object.keys(updates).length === 0) {
-      setStatus(status, true, "No changes.");
+      setStatus(status, true, t("settings.noChanges"));
       return;
     }
 
@@ -2030,7 +2050,10 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
       if (updates.theme_mode) {
         applyTheme(String(updates.theme_mode));
       }
-      setStatus(status, true, "Saved. Avatar and theme changes apply immediately.");
+      if (updates.ui_language) {
+        setLanguage(String(updates.ui_language));
+      }
+      setStatus(status, true, t("settings.saved"));
     } catch (error) {
       setStatus(status, false, String(error));
     }
@@ -2054,88 +2077,137 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   const comfyWorkflowControls = el("div", { class: "inline-controls two" }, comfyWorkflow, browseWorkflow);
   const comfyOutputControls = el("div", { class: "inline-controls two" }, comfyOutputDir, browseOutputDir);
 
+  const pages: Array<[string, HTMLElement]> = [
+    [
+      "general",
+      el(
+        "div",
+        { class: "settings-section" },
+        el("h3", {}, t("settings.module.general")),
+        fieldRow(t("settings.language.ui"), uiLanguageSelect),
+        fieldRow(t("settings.language.systemPrompt"), systemPromptLanguageSelect, t("settings.language.systemPromptHint")),
+        fieldRow(t("settings.language.memory"), memoryLanguageSelect, t("settings.language.memoryHint")),
+      ),
+    ],
+    [
+      "avatar",
+      el(
+        "div",
+        { class: "settings-section" },
+        el("h3", {}, t("settings.module.avatar")),
+        fieldRow(t("settings.enable"), avatarEnabled),
+        fieldRow(t("settings.type"), avatarType),
+        fieldRow(t("settings.content"), avatarPathControls),
+        avatarHint,
+        fieldRow(t("settings.autoMood"), avatarAutoSelect, t("settings.autoMoodHint")),
+        fieldRow(t("settings.idleExpression"), avatarIdleExpression),
+        fieldRow(t("settings.thinkingExpression"), avatarThinkingExpression),
+        fieldRow(t("settings.speakingExpression"), avatarSpeakingExpression),
+        fieldRow(t("settings.errorExpression"), avatarErrorExpression),
+        fieldRow(t("settings.idleMotion"), avatarIdleMotion),
+        fieldRow(t("settings.thinkingMotion"), avatarThinkingMotion),
+        fieldRow(t("settings.speakingMotion"), avatarSpeakingMotion),
+      ),
+    ],
+    [
+      "remote",
+      el(
+        "div",
+        { class: "settings-section" },
+        el("h3", {}, t("settings.module.remote")),
+        fieldRow(t("settings.apiKey"), apiKeyInput, t("settings.keepKey")),
+        fieldRow(t("settings.baseUrl"), baseUrlInput),
+        fieldRow(t("settings.model"), modelInput),
+      ),
+    ],
+    [
+      "local",
+      el(
+        "div",
+        { class: "settings-section" },
+        el("h3", {}, t("settings.module.local")),
+        fieldRow(t("settings.backend"), backendSelect),
+        fieldRow(t("settings.baseUrl"), localUrlInput),
+        fieldRow(t("settings.enable"), llmToggle),
+        fieldRow(t("settings.autoLoad"), autoLoadToggle, t("settings.autoLoadHint")),
+        fieldRow(t("settings.model"), modelControls, t("settings.modelHint")),
+        modelHint,
+        fieldRow(t("settings.loadCommand"), loadCmdInput, t("settings.loadCommandHint")),
+        fieldRow(t("settings.unloadCommand"), unloadCmdInput, t("settings.unloadCommandHint")),
+      ),
+    ],
+    [
+      "comfyui",
+      el(
+        "div",
+        { class: "settings-section" },
+        el("h3", {}, t("settings.module.comfyui")),
+        fieldRow(t("settings.enable"), comfyEnabled),
+        fieldRow(t("settings.onDemandStart"), comfyAutoStart, t("settings.onDemandStartHint")),
+        fieldRow(t("settings.baseUrl"), comfyBaseUrl),
+        fieldRow(t("settings.rootDir"), comfyRootControls),
+        fieldRow(t("settings.python"), comfyPythonControls, t("settings.pythonHint")),
+        fieldRow(t("settings.envType"), comfyEnv),
+        fieldRow(t("settings.workflow"), comfyWorkflowControls),
+        fieldRow(t("settings.outputDir"), comfyOutputControls),
+        fieldRow(t("settings.launchCommand"), comfyLaunchCommand, t("settings.launchCommandHint")),
+      ),
+    ],
+    [
+      "vision",
+      el(
+        "div",
+        { class: "settings-section" },
+        el("h3", {}, t("settings.module.vision")),
+        fieldRow(t("settings.enable"), visionEnabled),
+        fieldRow(t("settings.apiKey"), visionApiKey, `${t("settings.keepKey")} Env fallback: ${cfg.multimodal.vision.api_key_env}.`),
+        fieldRow(t("settings.baseUrl"), visionBaseUrl),
+        fieldRow(t("settings.model"), visionModel),
+        fieldRow(t("settings.defaultPrompt"), visionDefaultPrompt),
+        fieldRow(t("settings.maxBytes"), visionMaxBytes, t("settings.maxBytesHint")),
+      ),
+    ],
+    [
+      "initiative",
+      el(
+        "div",
+        { class: "settings-section" },
+        el("h3", {}, t("settings.module.initiative")),
+        fieldRow(t("settings.enable"), initiativeEnabled),
+        fieldRow(t("settings.level"), initiativeLevel, t("settings.levelHint")),
+        initiativeLevelHint,
+        fieldRow(t("settings.cooldownMs"), initiativeCooldown),
+      ),
+    ],
+    [
+      "appearance",
+      el(
+        "div",
+        { class: "settings-section" },
+        el("h3", {}, t("settings.module.appearance")),
+        fieldRow(t("settings.theme"), themeSelect),
+      ),
+    ],
+  ];
+  const nav = el("nav", { class: "settings-nav", "aria-label": "Settings modules" });
+  const content = el("div", { class: "settings-content" });
+  const selectPage = (key: string) => {
+    Array.from(nav.querySelectorAll("button")).forEach((button) => {
+      button.classList.toggle("active", button.getAttribute("data-page") === key);
+    });
+    content.replaceChildren(pages.find(([pageKey]) => pageKey === key)?.[1] ?? pages[0][1]);
+  };
+  pages.forEach(([key]) => {
+    const button = el("button", { class: "settings-nav-btn", type: "button", "data-page": key }, t(`settings.module.${key}`));
+    button.addEventListener("click", () => selectPage(key));
+    nav.append(button);
+  });
+  selectPage("general");
+
   panel.append(
-    el("h2", {}, "Settings"),
+    el("div", { class: "settings-header" }, el("h2", {}, t("settings.title")), el("div", { class: "settings-actions" }, saveBtn, closeBtn)),
     status,
-    el(
-      "div",
-      { class: "settings-section" },
-      el("h3", {}, "Avatar"),
-      fieldRow("Enable", avatarEnabled),
-      fieldRow("Type", avatarType),
-      fieldRow("Content", avatarPathControls),
-      avatarHint,
-      fieldRow("Auto mood", avatarAutoSelect, "Ask the chat model to choose Live2D expression/motion from the current model vocabulary."),
-      fieldRow("Idle expression", avatarIdleExpression),
-      fieldRow("Thinking expression", avatarThinkingExpression),
-      fieldRow("Speaking expression", avatarSpeakingExpression),
-      fieldRow("Error expression", avatarErrorExpression),
-      fieldRow("Idle motion", avatarIdleMotion),
-      fieldRow("Thinking motion", avatarThinkingMotion),
-      fieldRow("Speaking motion", avatarSpeakingMotion),
-    ),
-    el(
-      "div",
-      { class: "settings-section" },
-      el("h3", {}, "Remote API"),
-      fieldRow("API key", apiKeyInput, "Leave blank to keep the current key."),
-      fieldRow("Base URL", baseUrlInput),
-      fieldRow("Model", modelInput),
-    ),
-    el(
-      "div",
-      { class: "settings-section" },
-      el("h3", {}, "Local LLM"),
-      fieldRow("Backend", backendSelect),
-      fieldRow("Base URL", localUrlInput),
-      fieldRow("Enable", llmToggle),
-      fieldRow("Auto-load", autoLoadToggle, "Starts the inference server on app launch when supported."),
-      fieldRow("Model", modelControls, "Use manufacturer/model_name for discovered GGUF files."),
-      modelHint,
-      fieldRow("Load command", loadCmdInput, "Placeholders: {model_path}, {port}, {host}."),
-      fieldRow("Unload command", unloadCmdInput, "Empty means terminate the spawned process."),
-    ),
-    el(
-      "div",
-      { class: "settings-section" },
-      el("h3", {}, "ComfyUI"),
-      fieldRow("Enable", comfyEnabled),
-      fieldRow("On-demand start", comfyAutoStart, "Starts ComfyUI only when an image is requested, then stops the managed process after completion."),
-      fieldRow("Base URL", comfyBaseUrl),
-      fieldRow("Root dir", comfyRootControls),
-      fieldRow("Python", comfyPythonControls, "Use the Python executable inside conda or venv."),
-      fieldRow("Env type", comfyEnv),
-      fieldRow("Workflow", comfyWorkflowControls),
-      fieldRow("Output dir", comfyOutputControls),
-      fieldRow("Launch command", comfyLaunchCommand, "Optional. Placeholders: {python}, {root_dir}, {host}, {port}."),
-    ),
-    el(
-      "div",
-      { class: "settings-section" },
-      el("h3", {}, "Kimi Vision"),
-      fieldRow("Enable", visionEnabled),
-      fieldRow("API key", visionApiKey, `Leave blank to keep current key. Env fallback: ${cfg.multimodal.vision.api_key_env}.`),
-      fieldRow("Base URL", visionBaseUrl),
-      fieldRow("Model", visionModel),
-      fieldRow("Default prompt", visionDefaultPrompt),
-      fieldRow("Max bytes", visionMaxBytes, "Applies to local uploads and future screenshots."),
-    ),
-    el(
-      "div",
-      { class: "settings-section" },
-      el("h3", {}, "Initiative"),
-      fieldRow("Enable", initiativeEnabled),
-      fieldRow("Level", initiativeLevel, "Higher levels reduce the required idle time."),
-      initiativeLevelHint,
-      fieldRow("Cooldown ms", initiativeCooldown),
-    ),
-    el(
-      "div",
-      { class: "settings-section" },
-      el("h3", {}, "Appearance"),
-      fieldRow("Theme", themeSelect),
-    ),
-    el("div", { class: "settings-actions" }, saveBtn, closeBtn),
+    el("div", { class: "settings-shell" }, nav, content),
   );
   overlay.append(panel);
   return overlay;
@@ -2146,6 +2218,7 @@ function fallbackConfig(): ConfigSnapshot {
     app: {
       name: "Hestia",
       theme: { mode: "system" },
+      language: { ui: "en", system_prompt: "en", memory: "en" },
       avatar: {
         enabled: true,
         image_path: "companion-cat-placeholder.png",
@@ -2208,9 +2281,13 @@ function fallbackConfig(): ConfigSnapshot {
 
 async function loadConfig(): Promise<ConfigSnapshot> {
   try {
-    return JSON.parse(await invoke("get_config_snapshot"));
+    const cfg = JSON.parse(await invoke("get_config_snapshot")) as ConfigSnapshot;
+    setLanguage(cfg.app.language?.ui ?? "en");
+    return cfg;
   } catch {
-    return fallbackConfig();
+    const cfg = fallbackConfig();
+    setLanguage(cfg.app.language.ui);
+    return cfg;
   }
 }
 
@@ -2228,6 +2305,7 @@ function reportUserActivity() {
 async function buildApp() {
   let cfg = await loadConfig();
   applyTheme(cfg.app.theme.mode);
+  setLanguage(cfg.app.language.ui);
   watchSystemTheme();
 
   const app = document.getElementById("app");
@@ -2404,6 +2482,7 @@ async function buildApp() {
 async function buildCompanionView() {
   const cfg = await loadConfig();
   applyTheme(cfg.app.theme.mode);
+  setLanguage(cfg.app.language.ui);
   watchSystemTheme();
 
   const app = document.getElementById("app");
@@ -3050,7 +3129,7 @@ async function handleInitiative(
     const response = JSON.parse(raw) as InitiativeResponse;
     loadingMessage.remove();
     if (!response.allowed) {
-      addMessage(messages, "assistant", `暂时不主动发言: ${initiativeReasonText(response.decision)}`);
+      addMessage(messages, "assistant", t("initiative.notAllowed", { reason: initiativeReasonText(response.decision) }));
       return;
     }
     const content = response.content || "";

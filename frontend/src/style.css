@@ -514,9 +514,9 @@ button {
 }
 
 .settings-panel {
-  width: min(620px, 100%);
+  width: min(920px, 100%);
   max-height: min(82vh, 820px);
-  overflow-y: auto;
+  overflow: hidden;
   padding: 26px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -525,15 +525,66 @@ button {
 }
 
 .settings-panel h2 {
-  margin-bottom: 20px;
+  margin: 0;
   color: var(--text-primary);
   font-size: 1.05rem;
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.settings-shell {
+  display: grid;
+  grid-template-columns: 180px minmax(0, 1fr);
+  gap: 18px;
+  min-height: 440px;
+}
+
+.settings-nav {
+  display: flex;
+  max-height: min(64vh, 640px);
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding-right: 8px;
+  border-right: 1px solid var(--border);
+}
+
+.settings-nav-btn {
+  width: 100%;
+  min-height: 34px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 0.86rem;
+  text-align: left;
+}
+
+.settings-nav-btn:hover,
+.settings-nav-btn.active {
+  border-color: var(--border);
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.settings-content {
+  max-height: min(64vh, 640px);
+  min-width: 0;
+  overflow-y: auto;
+  padding-right: 4px;
 }
 
 .settings-section {
   display: grid;
   gap: 12px;
-  margin-bottom: 24px;
 }
 
 .settings-section h3 {
@@ -1096,6 +1147,40 @@ button {
   .theme-toggle,
   .sidebar-actions {
     grid-column: 1 / -1;
+  }
+
+  .settings-panel {
+    overflow-y: auto;
+  }
+
+  .settings-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .settings-shell {
+    grid-template-columns: 1fr;
+    min-height: 0;
+  }
+
+  .settings-nav {
+    max-height: none;
+    flex-direction: row;
+    overflow-x: auto;
+    padding-right: 0;
+    padding-bottom: 8px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .settings-nav-btn {
+    width: auto;
+    white-space: nowrap;
+  }
+
+  .settings-content {
+    max-height: none;
+    overflow: visible;
   }
 
   .settings-row {
