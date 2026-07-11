@@ -5,6 +5,11 @@ environment = "development"
 [app.theme]
 mode = "system"
 
+[app.language]
+ui = "en"
+system_prompt = "en"
+memory = "en"
+
 [app.avatar]
 enabled = true
 image_path = "companion-cat-placeholder.png"

@@ -79,6 +79,7 @@ pub struct ChatMessage {
 
 pub struct PromptAssembler {
     persona: PersonaConfig,
+    system_prompt_language: String,
 }
 
 pub fn runtime_metadata_message() -> serde_json::Value {
@@ -97,7 +98,15 @@ impl PromptAssembler {
         info!("loading persona profile {}", profile_name);
         let content = read_persona_raw(profile_name)?;
         let persona: PersonaConfig = serde_json::from_str(&content)?;
-        Ok(Self { persona })
+        Ok(Self {
+            persona,
+            system_prompt_language: "en".into(),
+        })
+    }
+
+    pub fn with_system_prompt_language(mut self, language: impl Into<String>) -> Self {
+        self.system_prompt_language = language.into();
+        self
     }
 
     pub fn build_system_prompt(&self) -> String {
@@ -106,25 +115,47 @@ impl PromptAssembler {
         } else {
             format!("{}, {}", self.persona.name, self.persona.aliases.join(", "))
         };
-        [
-            "You are the character described below. The user's references to any listed name or alias refer to you, the character you are role-playing.",
-            "Base style rules:",
-            "- When replying in Chinese, use halfwidth punctuation only: , . ; : ? !",
-            "- Parentheses may be used for brief actions, states, tone, or expressions when appropriate.",
-            "- Do not let style override facts, reasoning, safety, or the user's current request.",
-            "- If long-term memory conflicts with the current user message, prefer the current user message.",
-            "- Dynamic runtime metadata, including timestamps, is supplied at the end of the message list.",
-            "",
-            "Character profile:",
-            &format!("- Name and aliases: {aliases}"),
-            &format!("- Identity: {}", empty_as_unspecified(&self.persona.identity)),
-            &format!("- Species: {}", empty_as_unspecified(&self.persona.species)),
-            &format!("- Appearance: {}", empty_as_unspecified(&self.persona.appearance)),
-            &format!("- Personality: {}", empty_as_unspecified(&self.persona.personality)),
-            &format!("- Language habits: {}", empty_as_unspecified(&self.persona.language_style)),
-            &format!("- Scenario: {}", empty_as_unspecified(&self.persona.scenario)),
-        ]
-        .join("\n")
+        if self.system_prompt_language == "zh-CN" {
+            [
+                "你正在扮演下方描述的角色. 用户提到任何列出的名字或别名时, 都是在指代你扮演的这个角色.",
+                "基础风格规则:",
+                "- 使用中文回复时, 只使用半角标点: , . ; : ? !",
+                "- 合适时可以用括号写简短动作, 状态, 语气或表情.",
+                "- 风格不能覆盖事实, 推理, 安全要求或用户当前请求.",
+                "- 如果长期记忆和用户当前消息冲突, 以用户当前消息为准.",
+                "- 动态运行信息, 包括时间戳, 会放在消息列表末尾.",
+                "",
+                "角色设定:",
+                &format!("- 名字和别名: {aliases}"),
+                &format!("- 身份: {}", empty_as_unspecified_zh(&self.persona.identity)),
+                &format!("- 物种: {}", empty_as_unspecified_zh(&self.persona.species)),
+                &format!("- 外观: {}", empty_as_unspecified_zh(&self.persona.appearance)),
+                &format!("- 性格: {}", empty_as_unspecified_zh(&self.persona.personality)),
+                &format!("- 语言习惯: {}", empty_as_unspecified_zh(&self.persona.language_style)),
+                &format!("- 场景: {}", empty_as_unspecified_zh(&self.persona.scenario)),
+            ]
+            .join("\n")
+        } else {
+            [
+                "You are the character described below. The user's references to any listed name or alias refer to you, the character you are role-playing.",
+                "Base style rules:",
+                "- When replying in Chinese, use halfwidth punctuation only: , . ; : ? !",
+                "- Parentheses may be used for brief actions, states, tone, or expressions when appropriate.",
+                "- Do not let style override facts, reasoning, safety, or the user's current request.",
+                "- If long-term memory conflicts with the current user message, prefer the current user message.",
+                "- Dynamic runtime metadata, including timestamps, is supplied at the end of the message list.",
+                "",
+                "Character profile:",
+                &format!("- Name and aliases: {aliases}"),
+                &format!("- Identity: {}", empty_as_unspecified(&self.persona.identity)),
+                &format!("- Species: {}", empty_as_unspecified(&self.persona.species)),
+                &format!("- Appearance: {}", empty_as_unspecified(&self.persona.appearance)),
+                &format!("- Personality: {}", empty_as_unspecified(&self.persona.personality)),
+                &format!("- Language habits: {}", empty_as_unspecified(&self.persona.language_style)),
+                &format!("- Scenario: {}", empty_as_unspecified(&self.persona.scenario)),
+            ]
+            .join("\n")
+        }
     }
 
     pub fn assemble_messages_with_context(
@@ -170,6 +201,14 @@ impl PromptAssembler {
 fn empty_as_unspecified(value: &str) -> &str {
     if value.trim().is_empty() {
         "unspecified"
+    } else {
+        value
+    }
+}
+
+fn empty_as_unspecified_zh(value: &str) -> &str {
+    if value.trim().is_empty() {
+        "未指定"
     } else {
         value
     }

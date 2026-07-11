@@ -28,6 +28,8 @@ pub struct AppSection {
     #[serde(default)]
     pub theme: ThemeSection,
     #[serde(default)]
+    pub language: LanguageSection,
+    #[serde(default)]
     pub avatar: AvatarSection,
 }
 
@@ -43,6 +45,31 @@ impl Default for ThemeSection {
     fn default() -> Self {
         Self {
             mode: default_theme_mode(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LanguageSection {
+    #[serde(default = "default_ui_language")]
+    pub ui: String,
+    #[serde(default = "default_prompt_language")]
+    pub system_prompt: String,
+    #[serde(default = "default_prompt_language")]
+    pub memory: String,
+}
+fn default_ui_language() -> String {
+    "en".into()
+}
+fn default_prompt_language() -> String {
+    "en".into()
+}
+impl Default for LanguageSection {
+    fn default() -> Self {
+        Self {
+            ui: default_ui_language(),
+            system_prompt: default_prompt_language(),
+            memory: default_prompt_language(),
         }
     }
 }
@@ -570,7 +597,11 @@ pub fn load_config() -> Result<AppConfig, Box<dyn std::error::Error>> {
 
 pub fn config_snapshot(c: &AppConfig) -> serde_json::Value {
     serde_json::json!({
-        "app": { "name": c.app.name, "environment": c.app.environment, "theme": { "mode": c.app.theme.mode }, "avatar": {
+        "app": { "name": c.app.name, "environment": c.app.environment, "theme": { "mode": c.app.theme.mode }, "language": {
+            "ui": c.app.language.ui,
+            "system_prompt": c.app.language.system_prompt,
+            "memory": c.app.language.memory,
+        }, "avatar": {
             "enabled": c.app.avatar.enabled,
             "image_path": c.app.avatar.image_path,
             "model_type": c.app.avatar.model_type,
@@ -660,6 +691,15 @@ pub fn update_user_config(updates: serde_json::Value) -> Result<(), Box<dyn std:
         };
         if let Some(v) = updates.get("theme_mode") {
             upsert("app.theme", "mode", v);
+        }
+        if let Some(v) = updates.get("ui_language") {
+            upsert("app.language", "ui", v);
+        }
+        if let Some(v) = updates.get("system_prompt_language") {
+            upsert("app.language", "system_prompt", v);
+        }
+        if let Some(v) = updates.get("memory_language") {
+            upsert("app.language", "memory", v);
         }
         if let Some(v) = updates.get("avatar_enabled") {
             upsert("app.avatar", "enabled", v);

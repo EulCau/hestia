@@ -363,13 +363,17 @@ fn mark_memories_used<'a>(
     Ok(())
 }
 
-pub fn format_memory_context(memories: &[MemoryItem]) -> Option<String> {
+pub fn format_memory_context(memories: &[MemoryItem], language: &str) -> Option<String> {
     if memories.is_empty() {
         return None;
     }
-    let mut lines = vec![
-        "Relevant long-term memory. Use only when it helps answer the current request. If it conflicts with the current user message, prefer the current user message.".to_string(),
-    ];
+    let mut lines = if language == "zh-CN" {
+        vec!["相关长期记忆. 只在有助于回答当前请求时使用. 如果它和用户当前消息冲突, 优先相信用户当前消息.".to_string()]
+    } else {
+        vec![
+            "Relevant long-term memory. Use only when it helps answer the current request. If it conflicts with the current user message, prefer the current user message.".to_string(),
+        ]
+    };
     for memory in memories {
         lines.push(format!(
             "- [{}{}] {}",

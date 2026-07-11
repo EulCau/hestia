@@ -421,8 +421,10 @@ async fn generate_role_profile(
         &serde_json::to_string_pretty(&seed).map_err(|e| format!("failed to serialize seed: {}", e))?,
     ]
     .join("\n");
+    let cfg = current_config(&state);
     let assembler = PromptAssembler::load(&current_role_id(&state))
-        .map_err(|e| format!("failed to load active role: {}", e))?;
+        .map_err(|e| format!("failed to load active role: {}", e))?
+        .with_system_prompt_language(cfg.app.language.system_prompt);
     let messages = assembler.assemble_messages_with_context(&prompt, &[], None);
     let job = crate::protocol::Job::new(
         "role_profile_generation",
@@ -681,13 +683,15 @@ async fn request_initiative_message(
     let cfg = current_config(&state);
     let role_id = cfg.personality.default_profile.clone();
     let assembler =
-        PromptAssembler::load(&role_id).map_err(|e| format!("failed to load persona: {}", e))?;
+        PromptAssembler::load(&role_id)
+            .map_err(|e| format!("failed to load persona: {}", e))?
+            .with_system_prompt_language(cfg.app.language.system_prompt.clone());
     let memories = memory::relevant_memories(&role_id, &decision.suggested_prompt, 6)
         .unwrap_or_else(|e| {
             warn!(error = %e, "failed to load initiative memory context");
             Vec::new()
         });
-    let memory_context = memory::format_memory_context(&memories);
+    let memory_context = memory::format_memory_context(&memories, &cfg.app.language.memory);
     let messages = assembler.assemble_messages_with_context(
         &decision.suggested_prompt,
         &history,
@@ -1525,7 +1529,9 @@ async fn send_chat_message(
     let cfg = current_config(&state);
     let role_id = cfg.personality.default_profile.clone();
     let assembler =
-        PromptAssembler::load(&role_id).map_err(|e| format!("failed to load persona: {}", e))?;
+        PromptAssembler::load(&role_id)
+            .map_err(|e| format!("failed to load persona: {}", e))?
+            .with_system_prompt_language(cfg.app.language.system_prompt.clone());
 
     let persona_name = assembler.persona_name().to_string();
 
@@ -1533,7 +1539,7 @@ async fn send_chat_message(
         warn!(error = %e, "failed to load memory context");
         Vec::new()
     });
-    let memory_context = memory::format_memory_context(&memories);
+    let memory_context = memory::format_memory_context(&memories, &cfg.app.language.memory);
     let messages =
         assembler.assemble_messages_with_context(&message, &history, memory_context.as_deref());
     let messages_json = serde_json::Value::Array(messages);
