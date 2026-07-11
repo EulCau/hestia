@@ -14,6 +14,8 @@ The Linux script builds Tauri `deb` and `rpm` bundles and, when `makepkg` is ava
 
 The Arch package step uses `makepkg -d` so the build host does not need to install every runtime dependency just to assemble the package. Package managers still resolve the declared dependencies when users install the produced package. The generated Arch package depends on `webkit2gtk-4.1`, `gtk3`, and `libayatana-appindicator`.
 
+Linux packages install a desktop launcher in the standard application menu location. Tauri handles this for `deb` and `rpm` bundles. The Arch package installs `/usr/share/applications/hestia.desktop` and hicolor PNG icons under `/usr/share/icons/hicolor/*/apps/hestia.png`.
+
 AppImage is optional because it depends on `linuxdeploy`/AppImage tooling that is often absent or broken on otherwise valid distro build hosts. Use `INCLUDE_APPIMAGE=1` to attempt it. Set `STRICT_APPIMAGE=1` if AppImage failure should fail the whole command.
 
 `npm run package:all` builds the host Linux architecture by default. To attempt both x86_64 and aarch64 Linux packages from one machine:

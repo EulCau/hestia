@@ -77,6 +77,17 @@ if command -v makepkg >/dev/null 2>&1; then
   mkdir -p "$ARCH_DIR"
   VERSION="$(node -p "require('./package.json').version")"
   INSTALL_BIN="$ROOT_DIR/src-tauri/target/$TARGET/release/hestia"
+  cat > "$ARCH_DIR/hestia.desktop" <<'EOF'
+[Desktop Entry]
+Type=Application
+Name=Hestia
+Comment=Personal AI Companion Runtime Platform
+Exec=hestia
+Icon=hestia
+Terminal=false
+Categories=Utility;
+StartupNotify=true
+EOF
   cat > "$ARCH_DIR/PKGBUILD" <<EOF
 pkgname=hestia
 pkgver=$VERSION
@@ -87,14 +98,21 @@ url='https://example.invalid/hestia'
 license=('MIT' 'Apache')
 depends=('webkit2gtk-4.1' 'gtk3' 'libayatana-appindicator')
 optdepends=('llama.cpp: local llama-server backend' 'ollama: local model backend')
-source=('hestia')
-sha256sums=('SKIP')
+source=('hestia' 'hestia.desktop' 'hestia-32.png' 'hestia-128.png' 'hestia-256.png')
+sha256sums=('SKIP' 'SKIP' 'SKIP' 'SKIP' 'SKIP')
 
 package() {
   install -Dm755 "\$srcdir/hestia" "\$pkgdir/usr/bin/hestia"
+  install -Dm644 "\$srcdir/hestia.desktop" "\$pkgdir/usr/share/applications/hestia.desktop"
+  install -Dm644 "\$srcdir/hestia-32.png" "\$pkgdir/usr/share/icons/hicolor/32x32/apps/hestia.png"
+  install -Dm644 "\$srcdir/hestia-128.png" "\$pkgdir/usr/share/icons/hicolor/128x128/apps/hestia.png"
+  install -Dm644 "\$srcdir/hestia-256.png" "\$pkgdir/usr/share/icons/hicolor/256x256/apps/hestia.png"
 }
 EOF
   cp "$INSTALL_BIN" "$ARCH_DIR/hestia"
+  cp "$ROOT_DIR/src-tauri/icons/32x32.png" "$ARCH_DIR/hestia-32.png"
+  cp "$ROOT_DIR/src-tauri/icons/128x128.png" "$ARCH_DIR/hestia-128.png"
+  cp "$ROOT_DIR/src-tauri/icons/128x128@2x.png" "$ARCH_DIR/hestia-256.png"
   if (cd "$ARCH_DIR" && makepkg -fd); then
     find "$ARCH_DIR" -maxdepth 1 -type f -name '*.pkg.tar.*' -exec cp -v {} "$OUT_DIR/" \;
   else
