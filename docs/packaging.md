@@ -7,9 +7,24 @@ Linux:
 ```bash
 TARGET=x86_64-unknown-linux-gnu scripts/package-linux.sh
 TARGET=aarch64-unknown-linux-gnu scripts/package-linux.sh
+INCLUDE_APPIMAGE=1 scripts/package-linux.sh
 ```
 
-The Linux script builds Tauri `deb`, `rpm`, and `AppImage` bundles and, when `makepkg` is available, an Arch Linux `.pkg.tar.zst`.
+The Linux script builds Tauri `deb` and `rpm` bundles and, when `makepkg` is available, an Arch Linux `.pkg.tar.zst`.
+
+The Arch package step uses `makepkg -d` so the build host does not need to install every runtime dependency just to assemble the package. Package managers still resolve the declared dependencies when users install the produced package.
+
+AppImage is optional because it depends on `linuxdeploy`/AppImage tooling that is often absent or broken on otherwise valid distro build hosts. Use `INCLUDE_APPIMAGE=1` to attempt it. Set `STRICT_APPIMAGE=1` if AppImage failure should fail the whole command.
+
+`npm run package:all` builds the host Linux architecture by default. To attempt both x86_64 and aarch64 Linux packages from one machine:
+
+```bash
+PACKAGE_CROSS=1 npm run package:all
+```
+
+Cross-building aarch64 still requires target Rust std, linker, WebKitGTK development packages, and distro packaging tools for that target. Building on native architecture is recommended.
+
+The scripts use the Tauri CLI from `frontend/node_modules/.bin/tauri` to avoid depending on a root-level npm install.
 
 Windows:
 
