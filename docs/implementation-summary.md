@@ -637,3 +637,17 @@ Phase 5 keeps screenshots conservative:
 - `get_screenshot_metadata` exposes current screenshot settings and reports `capture_available = false`.
 - No automatic screenshot capture runs in the background.
 - Vision jobs are implemented for local image paths. Screenshot capture remains disabled, but the backend vision helper is ready to accept future screenshot file paths.
+
+### 9.8 Settings Modules and Language Packs
+
+Settings now uses module pages instead of one long scrolling form. The dialog has a left module navigation column and an independently scrolling active settings page.
+
+GUI strings are routed through frontend language packs in `frontend/src/locales/`, with `frontend/src/i18n.ts` selecting the active pack. The default supported languages are `en` and `zh-CN`.
+
+Language preferences are stored under `[app.language]`:
+
+- `ui`: frontend GUI language
+- `system_prompt`: base character system prompt language
+- `memory`: memory-context instruction language
+
+Changing `system_prompt` language can reduce prompt-prefix cache hit rate. Changing `memory` language can make old and new memory context appear in mixed languages.

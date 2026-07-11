@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-10 (Role management and role-scoped memory)
+**Last updated:** 2026-07-11 (Settings modules and language preferences)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -154,6 +154,9 @@ Usage:    Scans the configured models_dir (default ~/models) for .gguf files.
 Arguments: { updates: Record<string, string|boolean|number> }
   Recognized keys:
     "theme_mode"              → writes [app.theme] mode = value
+    "ui_language"             → writes [app.language] ui = value (string)
+    "system_prompt_language"  → writes [app.language] system_prompt = value (string)
+    "memory_language"         → writes [app.language] memory = value (string)
     "avatar_enabled"          → writes [app.avatar] enabled = value (bool)
     "avatar_image_path"       → writes [app.avatar] image_path = value (string)
     "avatar_model_type"       → writes [app.avatar] model_type = value (string)
@@ -510,7 +513,8 @@ Settings is a modal overlay (`<div class="settings-overlay">`). It is created an
 
 | State | Behavior |
 |---|---|
-| Open | `buildSettingsPanel(cfg, onClose)` → `document.body.append(panel)` |
+| Open | `buildSettingsPanel(cfg, onClose)` → `document.body.append(panel)`; left module nav defaults to General |
+| Navigate | `.settings-nav-btn` replaces `.settings-content` with the selected module page |
 | Save | `invoke("update_settings", {updates})` → status bar OK/Error |
 | Close | `overlay.remove()` → `onClose()` refreshes cfg via `get_config_snapshot` |
 
@@ -737,6 +741,11 @@ interface ConfigSnapshot {
     name: string;
     environment: string;
     theme: { mode: "system" | "dark" | "light" };
+    language: {
+      ui: "en" | "zh-CN" | string;
+      system_prompt: "en" | "zh-CN" | string;
+      memory: "en" | "zh-CN" | string;
+    };
     avatar: {
       enabled: boolean;
       image_path: string;    // relative to frontend public/, e.g. a placeholder image or user-provided .model3.json
@@ -864,7 +873,10 @@ These are the stable selectors that the frontend creates. CSS, event handlers, a
 | `message.error` | Error message | Red bg |
 | `message.loading` | "Thinking..." | Italic, muted |
 | `settings-overlay` | Modal backdrop | Fixed fullscreen, dimmer |
-| `settings-panel` | Modal content | 480px card |
+| `settings-panel` | Modal content | module settings dialog |
+| `settings-shell` | Settings body | module nav + active page |
+| `settings-nav` | Settings navigation | module list with independent scrolling |
+| `settings-content` | Settings page content | active module with independent scrolling |
 | `settings-section` | Settings group | Bordered section |
 | `settings-row` | Label + input pair | Flex row |
 | `sidebar-btn` | Sidebar action button | Icon + text |
@@ -996,6 +1008,13 @@ Selecting a backend and saving writes `local_llm.backend` to `config/user.toml`.
 
 Persona rewrite is currently disabled in the chat pipeline and no longer exposed as a checkbox. The `persona_rewrite_enabled` update key remains supported only for compatibility with older user config.
 
+Settings is organized as module pages. The frontend language strings are loaded from `frontend/src/locales/*.json`; adding a GUI language should add a locale file and register it in `frontend/src/i18n.ts`.
+
+Language preferences:
+- `app.language.ui` controls GUI strings.
+- `app.language.system_prompt` controls the base character system prompt. Changing it can reduce prompt-prefix cache hit rate because stable prompt text changes.
+- `app.language.memory` controls the memory-context instruction text injected into chat prompts. Changing it can make memory context appear in mixed languages when existing memories were written in another language.
+
 ### 8.4 update_settings Key
 
 | Key | Type | Config Path |
@@ -1004,6 +1023,9 @@ Persona rewrite is currently disabled in the chat pipeline and no longer exposed
 | `local_llm_base_url` | `string` | `[local_llm] base_url` |
 | `local_llm_enabled` | `boolean` | `[local_llm] enabled` |
 | `persona_rewrite_enabled` | `boolean` | `[persona_rewrite] enabled` |
+| `ui_language` | `string` | `[app.language] ui` |
+| `system_prompt_language` | `string` | `[app.language] system_prompt` |
+| `memory_language` | `string` | `[app.language] memory` |
 
 ---
 
