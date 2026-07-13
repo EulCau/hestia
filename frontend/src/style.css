@@ -279,21 +279,28 @@ button {
 
 .main-content {
   min-width: 0;
+  min-height: 0;
+  height: 100%;
   display: flex;
   container-type: inline-size;
   justify-content: center;
   background: var(--bg-chat);
+  overflow: hidden;
 }
 
 .chat-container {
   flex: 1;
   min-width: 0;
+  min-height: 0;
   width: min(100%, 1040px);
+  height: 100%;
+  max-height: 100%;
   display: flex;
   flex-direction: column;
   border-left: 1px solid color-mix(in srgb, var(--border), transparent 40%);
   border-right: 1px solid color-mix(in srgb, var(--border), transparent 40%);
   background: var(--bg-chat);
+  overflow: hidden;
 }
 
 .chat-header {
@@ -334,14 +341,33 @@ button {
 }
 
 .chat-messages {
-  flex: 1;
+  flex: 1 1 0;
   width: 100%;
   min-height: 0;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  overflow-y: auto;
+  overflow-x: hidden;
+  overflow-y: scroll;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-input) var(--bg-chat);
   padding: 28px 24px;
+}
+
+.chat-messages::-webkit-scrollbar {
+  width: 10px;
+}
+
+.chat-messages::-webkit-scrollbar-track {
+  background: var(--bg-chat);
+}
+
+.chat-messages::-webkit-scrollbar-thumb {
+  border: 2px solid var(--bg-chat);
+  border-radius: 999px;
+  background: var(--border-input);
 }
 
 .message {
@@ -423,7 +449,9 @@ button {
 }
 
 .chat-input-area {
-  flex-shrink: 0;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   gap: 9px;

@@ -3573,6 +3573,7 @@ async function invokeStreamingChat(
       }
       await appendGeneratedImages(finalMessageElement, response.images ?? []);
     }
+    messages.scrollTop = messages.scrollHeight;
     return { ...response, content };
   } finally {
     if (renderFrame !== undefined) {

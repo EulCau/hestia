@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Role identity binding)
+**Last updated:** 2026-07-13 (Bounded chat scrolling)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -979,11 +979,11 @@ These are the stable selectors that the frontend creates. CSS, event handlers, a
 |---|---|---|
 | `app-layout` | Root flex container | sidebar + main |
 | `sidebar` | Left column | 220px fixed width |
-| `main-content` | Right column | flex-1, chat area |
-| `chat-container` | Flex column | header + messages + input |
+| `main-content` | Right column | height-bounded chat area with overflow clipped |
+| `chat-container` | Height-bounded flex column | fixed header + scrollable messages + fixed input row |
 | `chat-header` | Top bar | Title + clear button |
-| `chat-messages` | Scrollable area | Message list |
-| `chat-input-area` | Bottom bar | Input + send button |
+| `chat-messages` | Sole flexible scroll area | Message list; stable vertical scrollbar; automatically follows appended and streamed replies |
+| `chat-input-area` | Fixed bottom row | Input + send and media buttons; never displaced by message growth |
 | `message` | Each message bubble | Base class |
 | `message.user` | User message | Right-aligned, accent bg |
 | `message.assistant` | AI response | Left-aligned, muted bg |
