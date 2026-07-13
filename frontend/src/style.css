@@ -822,9 +822,27 @@ button {
   width: min(820px, 100%);
 }
 
+.persona-panel,
+.memory-panel,
+.role-panel {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  max-height: min(88vh, 860px);
+}
+
+.modal-scroll-body {
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 6px;
+}
+
+.modal-scroll-body > .settings-section {
+  padding-bottom: 6px;
+}
+
 .persona-editor {
+  width: 100%;
   min-height: 340px;
-  margin-bottom: 16px;
   resize: vertical;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 0.82rem;
