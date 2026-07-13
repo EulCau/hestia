@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Native titlebar restore)
+**Last updated:** 2026-07-13 (Streaming completion handling)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -335,7 +335,8 @@ Async:    YES. Used by the main chat for ordinary text chat.
             4. Otherwise PromptAssembler loads active role JSON and memory context
             5. RemoteApiWorker sends OpenAI-compatible `stream: true`
             6. Each SSE content delta is forwarded as `chat-stream-delta`
-            7. Final content is stored in automatic memory and returned
+            7. `data: [DONE]` terminates the stream immediately; the command does not wait for the server to close a reusable HTTP connection
+            8. Final content is stored in automatic memory and returned
 UI State:
   BEFORE:  disable textarea and send/image buttons, show "Thinking..."
   DURING:  first delta replaces the placeholder with an assistant message and appends text in place

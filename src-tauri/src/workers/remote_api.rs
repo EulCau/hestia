@@ -45,6 +45,42 @@ struct StreamDelta {
     content: Option<String>,
 }
 
+fn process_stream_line(
+    line: &str,
+    content: &mut String,
+    usage: &mut Option<Usage>,
+    finish_reason: &mut String,
+    on_delta: &mut (dyn FnMut(String) + Send),
+) -> Result<bool, serde_json::Error> {
+    let Some(data) = line.trim().strip_prefix("data:") else {
+        return Ok(false);
+    };
+    let data = data.trim();
+    if data == "[DONE]" {
+        return Ok(true);
+    }
+    if data.is_empty() {
+        return Ok(false);
+    }
+
+    let parsed: ChatCompletionStreamResponse = serde_json::from_str(data)?;
+    if let Some(chunk_usage) = parsed.usage {
+        *usage = Some(chunk_usage);
+    }
+    for choice in parsed.choices {
+        if let Some(reason) = choice.finish_reason {
+            *finish_reason = reason;
+        }
+        if let Some(delta) = choice.delta.content {
+            if !delta.is_empty() {
+                content.push_str(&delta);
+                on_delta(delta);
+            }
+        }
+    }
+    Ok(false)
+}
+
 #[derive(Debug, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
@@ -145,7 +181,7 @@ impl RemoteApiWorker {
         let mut usage: Option<Usage> = None;
         let mut finish_reason = "unknown".to_string();
 
-        while let Some(chunk) =
+        'stream: while let Some(chunk) =
             response
                 .chunk()
                 .await
@@ -157,35 +193,19 @@ impl RemoteApiWorker {
             buffer.push_str(&String::from_utf8_lossy(&chunk));
             while let Some(line_end) = buffer.find('\n') {
                 let line: String = buffer.drain(..=line_end).collect();
-                let line = line.trim();
-                let Some(data) = line.strip_prefix("data:") else {
-                    continue;
-                };
-                let data = data.trim();
-                if data == "[DONE]" {
-                    break;
-                }
-                if data.is_empty() {
-                    continue;
-                }
-                let parsed: ChatCompletionStreamResponse =
-                    serde_json::from_str(data).map_err(|e| WorkerError::InferenceFailed {
-                        worker_id: self.id.clone(),
-                        reason: format!("failed to parse streaming chunk: {}", e),
-                    })?;
-                if let Some(chunk_usage) = parsed.usage {
-                    usage = Some(chunk_usage);
-                }
-                for choice in parsed.choices {
-                    if let Some(reason) = choice.finish_reason {
-                        finish_reason = reason;
-                    }
-                    if let Some(delta) = choice.delta.content {
-                        if !delta.is_empty() {
-                            content.push_str(&delta);
-                            on_delta(delta);
-                        }
-                    }
+                let done = process_stream_line(
+                    &line,
+                    &mut content,
+                    &mut usage,
+                    &mut finish_reason,
+                    on_delta,
+                )
+                .map_err(|e| WorkerError::InferenceFailed {
+                    worker_id: self.id.clone(),
+                    reason: format!("failed to parse streaming chunk: {}", e),
+                })?;
+                if done {
+                    break 'stream;
                 }
             }
         }
@@ -219,6 +239,52 @@ impl RemoteApiWorker {
             "usage": usage,
             "model": model,
         }))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::process_stream_line;
+
+    #[test]
+    fn process_stream_line_emits_delta() {
+        let mut content = String::new();
+        let mut usage = None;
+        let mut finish_reason = "unknown".to_string();
+        let mut emitted = Vec::new();
+        let mut on_delta = |delta| emitted.push(delta);
+
+        let done = process_stream_line(
+            r#"data: {"choices":[{"delta":{"content":"hello"},"finish_reason":null}]}"#,
+            &mut content,
+            &mut usage,
+            &mut finish_reason,
+            &mut on_delta,
+        )
+        .unwrap();
+
+        assert!(!done);
+        assert_eq!(content, "hello");
+        assert_eq!(emitted, vec!["hello"]);
+    }
+
+    #[test]
+    fn process_stream_line_stops_on_done_event() {
+        let mut content = String::new();
+        let mut usage = None;
+        let mut finish_reason = "unknown".to_string();
+        let mut on_delta = |_| {};
+
+        let done = process_stream_line(
+            "data: [DONE]",
+            &mut content,
+            &mut usage,
+            &mut finish_reason,
+            &mut on_delta,
+        )
+        .unwrap();
+
+        assert!(done);
     }
 }
 
