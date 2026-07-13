@@ -189,6 +189,11 @@ interface RoleProfile {
   pinned: boolean;
 }
 
+interface SetActiveRoleResponse {
+  active_role: string;
+  avatar?: AvatarConfig;
+}
+
 interface RoleStoragePaths {
   role: string;
   assets: string;
@@ -1372,6 +1377,15 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
   const activateBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("role.activate"));
   const deleteBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("role.delete"));
   const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("role.close"));
+  const activateRole = async (role: RoleProfile) => {
+    const raw = await invoke<string>("set_active_role", { profile: role.id });
+    const response = JSON.parse(raw) as SetActiveRoleResponse;
+    cfg.personality.default_profile = response.active_role || role.id;
+    if (response.avatar) {
+      cfg.app.avatar = response.avatar;
+    }
+    onRoleChange(cfg.personality.default_profile);
+  };
 
   newBtn.addEventListener("click", () => {
     void applyRole(emptyRole());
@@ -1397,9 +1411,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
     const role = roleFromForm();
     try {
       await invoke("save_persona_content", { profile: role.id, content: JSON.stringify(role, null, 2) });
-      await invoke("set_active_role", { profile: role.id });
-      cfg.personality.default_profile = role.id;
-      onRoleChange(role.id);
+      await activateRole(role);
       setStatus(status, true, t("role.savedActivated", { name: role.name }));
       await loadRoles(role.id);
     } catch (error) {
@@ -1409,9 +1421,7 @@ function buildRoleManager(cfg: ConfigSnapshot, onRoleChange: (roleId: string) =>
   activateBtn.addEventListener("click", async () => {
     const role = roleFromForm();
     try {
-      await invoke("set_active_role", { profile: role.id });
-      cfg.personality.default_profile = role.id;
-      onRoleChange(role.id);
+      await activateRole(role);
       setStatus(status, true, t("role.activated", { name: role.name || role.id }));
     } catch (error) {
       setStatus(status, false, String(error));

@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Tray chat focus)
+**Last updated:** 2026-07-13 (Role avatar asset loading)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -143,6 +143,8 @@ Usage:
   - live2d: accepts a directory or `.model3.json`, copies the runtime directory to
     `usr/roles/{profile}/avatar/live2d/`, and returns the copied `.model3.json` path
   - digital_human: copies `.vrm`, `.glb`, or `.gltf` to `usr/roles/{profile}/avatar/avatar.<ext>`
+  - release/runtime paths are read through Tauri's asset protocol; `tauri.conf.json`
+    must keep the app user-data directories in `app.security.assetProtocol.scope`
   Development rendering cache:
   - the same files are copied under ignored `frontend/public/role-avatar/{profile}/`
   - the returned path is public-relative so role activation hot-swaps the avatar without
@@ -394,12 +396,15 @@ Usage:    Displays editable role and memory config file paths in the frontend.
 #### `set_active_role`
 ```
 Arguments: { profile: string }
-Returns:  string (JSON) — { active_role: string }
+Returns:  string (JSON) — { active_role: string, avatar: AvatarConfig }
 Errors:   string if profile does not exist or config cannot be written
 Side effect: Writes [personality] default_profile in config/user.toml.
              If the selected role has RoleProfile.avatar.image_path, the backend
              also writes [app.avatar] enabled/model_type/image_path and emits
              avatar-config-changed so visible avatar adapters hot-swap.
+             The backend normalizes role avatar paths to the copied files under
+             `usr/roles/{profile}/avatar` or the platform user-data role avatar
+             directory before writing [app.avatar].
 ```
 
 #### `delete_role`

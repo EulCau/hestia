@@ -408,7 +408,23 @@ fn set_active_role(
         .map_err(|e| format!("failed to update active role: {}", e))?;
     apply_role_avatar(&app, &profile)?;
     let cfg = current_config(&state);
-    Ok(serde_json::json!({ "active_role": cfg.personality.default_profile }).to_string())
+    Ok(serde_json::json!({
+        "active_role": cfg.personality.default_profile,
+        "avatar": {
+            "enabled": cfg.app.avatar.enabled,
+            "image_path": cfg.app.avatar.image_path,
+            "model_type": cfg.app.avatar.model_type,
+            "auto_select": cfg.app.avatar.auto_select,
+            "idle_expression": cfg.app.avatar.idle_expression,
+            "thinking_expression": cfg.app.avatar.thinking_expression,
+            "speaking_expression": cfg.app.avatar.speaking_expression,
+            "error_expression": cfg.app.avatar.error_expression,
+            "idle_motion": cfg.app.avatar.idle_motion,
+            "thinking_motion": cfg.app.avatar.thinking_motion,
+            "speaking_motion": cfg.app.avatar.speaking_motion,
+        }
+    })
+    .to_string())
 }
 
 #[tauri::command]
@@ -618,10 +634,73 @@ fn emit_avatar_config_changed(app: &tauri::AppHandle, avatar: &config::AvatarSec
     let _ = app.emit_to("companion_dialog", "avatar-config-changed", payload);
 }
 
+fn role_avatar_stored_path(
+    profile: &str,
+    avatar: &personality::RoleAvatarConfig,
+) -> Result<String, String> {
+    let model_type = if avatar.model_type.trim().is_empty() {
+        "placeholder"
+    } else {
+        avatar.model_type.trim()
+    };
+    let asset_dir = personality::role_asset_dir(profile);
+    let source = resolve_project_path(avatar.image_path.trim());
+
+    if model_type == "live2d" {
+        let target = asset_dir.join("live2d");
+        let model_path = if target.exists() {
+            find_model3_json(&target)?
+        } else {
+            let model_path = find_model3_json(&source)?;
+            let root = if source.is_dir() {
+                source
+            } else {
+                model_path
+                    .parent()
+                    .ok_or_else(|| "Live2D model has no parent directory".to_string())?
+                    .to_path_buf()
+            };
+            copy_dir_recursive(&root, &target)?;
+            let model_relative_to_root = model_path
+                .strip_prefix(&root)
+                .map_err(|_| "failed to resolve Live2D model path".to_string())?;
+            target.join(model_relative_to_root)
+        };
+        return Ok(model_path.to_string_lossy().replace('\\', "/"));
+    }
+
+    if model_type == "placeholder" || model_type == "digital_human" {
+        let extension = source
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.to_ascii_lowercase());
+        let existing = extension
+            .as_ref()
+            .map(|ext| asset_dir.join(format!("avatar.{ext}")))
+            .filter(|path| path.is_file());
+        if let Some(path) = existing {
+            return Ok(path.to_string_lossy().replace('\\', "/"));
+        }
+        if source.is_file() {
+            let extension = extension.unwrap_or_else(|| {
+                if model_type == "digital_human" {
+                    "glb".into()
+                } else {
+                    "png".into()
+                }
+            });
+            let target = copy_file_to_dir(&source, &asset_dir, &format!("avatar.{extension}"))?;
+            return Ok(target.to_string_lossy().replace('\\', "/"));
+        }
+    }
+
+    Ok(avatar.image_path.clone())
+}
+
 fn apply_role_avatar(app: &tauri::AppHandle, profile: &str) -> Result<(), String> {
     let raw = personality::read_persona_raw(profile)
         .map_err(|e| format!("failed to read role avatar config: {}", e))?;
-    let role: personality::PersonaConfig =
+    let mut role: personality::PersonaConfig =
         serde_json::from_str(&raw).map_err(|e| format!("failed to parse role: {}", e))?;
     if role.avatar.image_path.trim().is_empty() {
         return Ok(());
@@ -629,12 +708,20 @@ fn apply_role_avatar(app: &tauri::AppHandle, profile: &str) -> Result<(), String
     let model_type = if role.avatar.model_type.trim().is_empty() {
         "placeholder".to_string()
     } else {
-        role.avatar.model_type
+        role.avatar.model_type.clone()
     };
+    let image_path = role_avatar_stored_path(profile, &role.avatar)?;
+    if image_path != role.avatar.image_path {
+        role.avatar.image_path = image_path.clone();
+        let content = serde_json::to_string_pretty(&role)
+            .map_err(|e| format!("failed to serialize role avatar config: {}", e))?;
+        personality::save_persona_raw(profile, &content)
+            .map_err(|e| format!("failed to save normalized role avatar path: {}", e))?;
+    }
     config::update_user_config(serde_json::json!({
         "avatar_enabled": role.avatar.enabled,
         "avatar_model_type": model_type,
-        "avatar_image_path": role.avatar.image_path,
+        "avatar_image_path": image_path,
     }))
     .map_err(|e| format!("failed to apply role avatar: {}", e))?;
     let cfg = config::load_config().map_err(|e| format!("failed to reload config: {}", e))?;

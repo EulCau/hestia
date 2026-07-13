@@ -22,7 +22,17 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": [
+          "../usr/**",
+          "$APPDATA/hestia/**",
+          "$APPLOCALDATA/hestia/**",
+          "$DATA/hestia/**",
+          "$LOCALDATA/hestia/**"
+        ]
+      }
     }
   },
   "bundle": {
