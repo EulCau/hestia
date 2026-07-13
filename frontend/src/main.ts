@@ -3531,6 +3531,7 @@ async function invokeStreamingChat(
   const requestId = createRequestId("chat");
   let content = "";
   let messageElement: HTMLElement | undefined;
+  let renderFrame: number | undefined;
   const ensureMessageElement = () => {
     if (!messageElement) {
       loadingMessage.remove();
@@ -3538,11 +3539,17 @@ async function invokeStreamingChat(
     }
     return messageElement;
   };
+  const renderContent = () => {
+    renderFrame = undefined;
+    ensureMessageElement().textContent = content;
+    messages.scrollTop = messages.scrollHeight;
+  };
   const unlisten = await listen<ChatStreamDelta>("chat-stream-delta", (event) => {
     if (event.payload.request_id !== requestId) return;
     content += event.payload.delta;
-    ensureMessageElement().textContent = content;
-    messages.scrollTop = messages.scrollHeight;
+    if (renderFrame === undefined) {
+      renderFrame = requestAnimationFrame(renderContent);
+    }
   });
 
   try {
@@ -3553,6 +3560,10 @@ async function invokeStreamingChat(
     });
     const response = JSON.parse(raw) as ChatResponse;
     content = response.content || content;
+    if (renderFrame !== undefined) {
+      cancelAnimationFrame(renderFrame);
+      renderFrame = undefined;
+    }
     const finalMessageElement = ensureMessageElement();
     finalMessageElement.textContent = content;
     if (response.generated_image) {
@@ -3564,6 +3575,10 @@ async function invokeStreamingChat(
     }
     return { ...response, content };
   } finally {
+    if (renderFrame !== undefined) {
+      cancelAnimationFrame(renderFrame);
+      renderContent();
+    }
     unlisten();
   }
 }

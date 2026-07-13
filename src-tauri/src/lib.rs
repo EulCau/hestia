@@ -1610,11 +1610,50 @@ fn parse_image_intent(text: &str) -> ImageIntentDecision {
         .unwrap_or_default()
 }
 
+fn might_request_image_generation(message: &str) -> bool {
+    let normalized = message.trim().to_lowercase();
+    [
+        "画一",
+        "画个",
+        "画出",
+        "绘制",
+        "生成一张",
+        "生成图片",
+        "生成图像",
+        "做一张图",
+        "创建图片",
+        "创建图像",
+        "图片",
+        "图像",
+        "张图",
+        "头像",
+        "插画",
+        "海报",
+        "壁纸",
+        "logo",
+        "generate an image",
+        "generate a picture",
+        "create an image",
+        "create a picture",
+        "make an image",
+        "make a picture",
+        "draw a ",
+        "draw an ",
+        "illustrate ",
+        "render an image",
+        "design a poster",
+        "design a logo",
+    ]
+    .iter()
+    .any(|keyword| normalized.contains(keyword))
+}
+
 async fn classify_image_intent(
     state: &AppState,
     message: &str,
     history: &[personality::ChatMessage],
 ) -> ImageIntentDecision {
+    let started = Instant::now();
     let recent_history = history
         .iter()
         .rev()
@@ -1641,7 +1680,7 @@ async fn classify_image_intent(
     );
     job.timeout_ms = 20000;
 
-    match state.remote_worker.infer(&job).await {
+    let decision = match state.remote_worker.infer(&job).await {
         Ok(value) => {
             let content = value["content"].as_str().unwrap_or_default();
             parse_image_intent(content)
@@ -1650,7 +1689,13 @@ async fn classify_image_intent(
             warn!(error = %error, "image intent classification failed");
             ImageIntentDecision::default()
         }
-    }
+    };
+    info!(
+        elapsed_ms = started.elapsed().as_millis(),
+        should_generate = decision.should_generate,
+        "image intent classification completed"
+    );
+    decision
 }
 
 #[tauri::command]
@@ -1787,7 +1832,11 @@ async fn send_chat_message(
         .to_string());
     }
 
-    let image_intent = classify_image_intent(&state, &message, &history).await;
+    let image_intent = if might_request_image_generation(&message) {
+        classify_image_intent(&state, &message, &history).await
+    } else {
+        ImageIntentDecision::default()
+    };
     if image_intent.should_generate {
         let prompt = image_intent
             .image_prompt
@@ -1987,7 +2036,11 @@ async fn send_chat_message_stream(
         initiative.record_user_activity();
     }
 
-    let image_intent = classify_image_intent(&state, &message, &history).await;
+    let image_intent = if might_request_image_generation(&message) {
+        classify_image_intent(&state, &message, &history).await
+    } else {
+        ImageIntentDecision::default()
+    };
     if image_intent.should_generate {
         let prompt = image_intent
             .image_prompt
@@ -2062,7 +2115,18 @@ async fn send_chat_message_stream(
 
     let event_app = app.clone();
     let event_request_id = request_id.clone();
+    let event_job_id = job.id.clone();
+    let stream_started = Instant::now();
+    let mut first_delta_logged = false;
     let mut emit_delta = move |delta: String| {
+        if !first_delta_logged {
+            info!(
+                job_id = %event_job_id,
+                time_to_first_delta_ms = stream_started.elapsed().as_millis(),
+                "first chat stream delta received"
+            );
+            first_delta_logged = true;
+        }
         let _ = event_app.emit_to(
             "main",
             "chat-stream-delta",
@@ -2080,6 +2144,11 @@ async fn send_chat_message_stream(
             error!(error = %e, "remote streaming inference failed");
             format!("streaming inference failed: {}", e)
         })?;
+    info!(
+        job_id = %job.id,
+        total_stream_ms = stream_started.elapsed().as_millis(),
+        "chat stream completed"
+    );
 
     let raw_content = result["content"].as_str().unwrap_or("").to_string();
     if cfg.observability.token_usage {
@@ -2505,8 +2574,8 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        encode_base64, explicit_image_prompt, image_mime_for_path, normalize_image_mode,
-        parse_image_intent,
+        encode_base64, explicit_image_prompt, image_mime_for_path, might_request_image_generation,
+        normalize_image_mode, parse_image_intent,
     };
 
     #[test]
@@ -2537,6 +2606,16 @@ mod tests {
         );
         assert!(parsed.should_generate);
         assert_eq!(parsed.image_prompt.as_deref(), Some("cinematic lake"));
+    }
+
+    #[test]
+    fn test_image_intent_prefilter() {
+        assert!(might_request_image_generation("请画一只在月球上的猫"));
+        assert!(might_request_image_generation(
+            "Generate an image of a red moon"
+        ));
+        assert!(!might_request_image_generation("解释一下扩散模型的原理"));
+        assert!(!might_request_image_generation("继续分析刚才的代码"));
     }
 
     #[test]

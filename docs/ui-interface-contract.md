@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Streaming completion handling)
+**Last updated:** 2026-07-13 (Chat latency optimization)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -288,7 +288,7 @@ Async:    YES. This is the primary long-running operation.
           Timeline:
             1. If message starts with "\image " or "/image ", run image generation directly
             2. If inputImagePath is set, classify intent and route to image+text generation or image recognition
-            3. Otherwise ask the remote chat worker for strict JSON image-intent routing
+            3. Otherwise apply a local visual-keyword prefilter and ask the remote chat worker for strict JSON image-intent routing only for candidate requests
             4. If should_generate=true, run ImageGeneration through Scheduler
             5. If should_generate=false or routing fails, PromptAssembler loads active role JSON
             6. Memory retrieval loads pinned/relevant memories and injects a bounded context message
@@ -330,7 +330,7 @@ Errors:   string — e.g. "streaming inference failed: ..." or "failed to load p
 Async:    YES. Used by the main chat for ordinary text chat.
           Timeline:
             1. Records user activity
-            2. Runs the same text-to-image intent classifier as `send_chat_message`
+            2. Applies a local image-generation keyword prefilter; only candidate requests run the same remote text-to-image intent classifier as `send_chat_message`
             3. If should_generate=true, runs image generation and returns a non-streaming generated-image response
             4. Otherwise PromptAssembler loads active role JSON and memory context
             5. RemoteApiWorker sends OpenAI-compatible `stream: true`
@@ -339,7 +339,7 @@ Async:    YES. Used by the main chat for ordinary text chat.
             8. Final content is stored in automatic memory and returned
 UI State:
   BEFORE:  disable textarea and send/image buttons, show "Thinking..."
-  DURING:  first delta replaces the placeholder with an assistant message and appends text in place
+  DURING:  first delta replaces the placeholder with an assistant message; accumulated deltas render at most once per animation frame
   AFTER:   reconcile final content, append generated image previews if present, re-enable input
   ON ERR:  remove placeholder, render error message, re-enable input
 ```
