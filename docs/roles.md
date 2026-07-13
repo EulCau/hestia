@@ -47,7 +47,7 @@ interface RoleProfile {
 }
 ```
 
-`name` and `aliases` are explicitly injected into the system prompt as references to the role itself. If the user later says one of those names, the model should understand it means the character being role-played.
+`name` and `aliases` are injected into a non-overridable identity-binding prefix before the editable role system template. The prefix states that these names belong only to the assistant role, not the user; the assistant must not use them to address the user unless the user explicitly says they share that name. If the user says one of those names, the model must treat it as the user addressing the role rather than identifying themselves.
 
 Role ids are restricted to ASCII letters, digits, `_`, and `-` because they are used as config file names.
 

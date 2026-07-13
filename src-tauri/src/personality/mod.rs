@@ -142,11 +142,11 @@ impl PromptAssembler {
         } else {
             empty_as_unspecified
         };
-        render_named_template(
+        let role_prompt = render_named_template(
             &template,
             &[
                 ("name", self.persona.name.clone()),
-                ("aliases", aliases),
+                ("aliases", aliases.clone()),
                 ("identity", unspecified(&self.persona.identity).to_string()),
                 ("species", unspecified(&self.persona.species).to_string()),
                 (
@@ -164,6 +164,11 @@ impl PromptAssembler {
                 ("scenario", unspecified(&self.persona.scenario).to_string()),
                 ("tone", unspecified(&self.persona.tone).to_string()),
             ],
+        );
+        format!(
+            "{}\n\n{}",
+            role_identity_binding(language, &aliases),
+            role_prompt
         )
     }
 
@@ -291,11 +296,21 @@ fn prompt_template_path(id: &str, language: &str) -> PathBuf {
         .join(format!("{}.md", sanitize_prompt_id(id)))
 }
 
+fn role_identity_binding(language: &str, aliases: &str) -> String {
+    if language == "zh-CN" {
+        format!(
+            "## 身份与称呼绑定\n- {aliases} 是你所扮演角色的名字和别名, 只指代你, 不指代用户.\n- 用户是正在与你对话的人. 除非用户明确说明自己的名字也相同, 绝不要用 {aliases} 称呼用户.\n- 当用户使用 {aliases} 称呼你时, 这是用户在叫你, 不是用户在自称.\n- 你的第一人称陈述属于角色, 对用户使用第二人称. 不要交换双方身份或称呼归属."
+        )
+    } else {
+        format!(
+            "## Identity and address binding\n- {aliases} are names and aliases of the character you are playing. They refer only to you, never to the user.\n- The user is the person speaking with you. Never address the user as {aliases} unless the user explicitly states that they share that name.\n- When the user addresses you as {aliases}, they are calling you; they are not identifying themselves.\n- Your first-person statements belong to the character. Address the user in the second person. Never swap the two identities or their names."
+        )
+    }
+}
+
 fn default_role_system_template(language: &str) -> String {
     if language == "zh-CN" {
         [
-            "你正在扮演下方描述的角色. 用户提到任何列出的名字或别名时, 都是在指代你扮演的这个角色.",
-            "",
             "## 基础风格规则",
             "- 使用中文回复时, 只使用半角标点: , . ; : ? !",
             "- 合适时可以用括号写简短动作, 状态, 语气或表情.",
@@ -316,8 +331,6 @@ fn default_role_system_template(language: &str) -> String {
         .join("\n")
     } else {
         [
-            "You are the character described below. The user's references to any listed name or alias refer to you, the character you are role-playing.",
-            "",
             "## Base style rules",
             "- When replying in Chinese, use halfwidth punctuation only: , . ; : ? !",
             "- Parentheses may be used for brief actions, states, tone, or expressions when appropriate.",
@@ -728,4 +741,20 @@ pub fn role_asset_dir(profile_name: &str) -> PathBuf {
     user_persona_dir()
         .join(sanitize_profile_id(profile_name))
         .join("avatar")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::role_identity_binding;
+
+    #[test]
+    fn role_identity_binding_keeps_names_on_assistant() {
+        let zh = role_identity_binding("zh-CN", "赫斯提亚, Hestia");
+        assert!(zh.contains("只指代你, 不指代用户"));
+        assert!(zh.contains("绝不要用 赫斯提亚, Hestia 称呼用户"));
+
+        let en = role_identity_binding("en", "Hestia");
+        assert!(en.contains("refer only to you, never to the user"));
+        assert!(en.contains("Never address the user as Hestia"));
+    }
 }

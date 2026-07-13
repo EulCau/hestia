@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Native window control restore)
+**Last updated:** 2026-07-13 (Role identity binding)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -1138,7 +1138,10 @@ previews, and allows edit/preview/save/reset per template. Template variables ar
 shown with the same placeholders used by code, for example `{aliases}`,
 `{personality}`, `{memory_items}`, and `{timestamp_ms}`. User edits are stored as
 prompt override files under the user data directory and take effect on the next
-prompt assembly.
+prompt assembly. A non-overridable identity-binding prefix is prepended to the
+rendered role prompt: role names and aliases refer only to the assistant role and
+must not be used as the user's name unless the user explicitly says they share
+that name.
 
 ### 8.4 update_settings Key
 
