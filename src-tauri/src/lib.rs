@@ -163,6 +163,11 @@ fn show_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     let window = app
         .get_webview_window(label)
         .ok_or_else(|| format!("{label} window is not available"))?;
+    if label == "main" {
+        window
+            .set_decorations(true)
+            .map_err(|e| format!("failed to enable system titlebar: {}", e))?;
+    }
     window
         .show()
         .map_err(|e| format!("failed to show {label} window: {}", e))?;
@@ -172,6 +177,13 @@ fn show_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     window
         .set_focus()
         .map_err(|e| format!("failed to focus {label} window: {}", e))?;
+    Ok(())
+}
+
+fn show_chat_window(app: &tauri::AppHandle) -> Result<(), String> {
+    show_window(app, "main")?;
+    app.emit_to("main", "show-chat", ())
+        .map_err(|e| format!("failed to emit chat event: {}", e))?;
     Ok(())
 }
 
@@ -2325,14 +2337,14 @@ pub fn run() {
                         ..
                     } = event
                     {
-                        if let Err(error) = show_window(&tray.app_handle(), "main") {
+                        if let Err(error) = show_chat_window(&tray.app_handle()) {
                             warn!(error, "failed to open main window from tray");
                         }
                     }
                 })
                 .on_menu_event(|app, event| match event.id().as_ref() {
                     "open_main" => {
-                        if let Err(error) = show_window(app, "main") {
+                        if let Err(error) = show_chat_window(app) {
                             warn!(error, "failed to open main window from tray menu");
                         }
                     }

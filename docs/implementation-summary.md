@@ -358,7 +358,7 @@ Behavior:
 - Hover controls expose always-on-top, proactive speech, open chat, and dialogue toggles.
 - Closing main/companion/dialog hides the window. Closing companion also hides the dialog. If all are hidden, managed backend processes are stopped while the tray process remains alive.
 - Always-on-top is set through Tauri and reapplied on focus loss, but true global stacking can still be limited by Wayland compositors.
-- The tray left-click opens chat. The tray menu opens chat/settings/companion, restarts managed backend processes, or quits.
+- The tray left-click opens chat, closes settings-style overlays, and focuses the chat input. The tray menu opens chat/settings/companion, restarts managed backend processes, or quits.
 - Initiative settings are hot-read before evaluation, so proactive speech enable/disable applies immediately.
 - The companion window restores configured bounds on startup and persists drag/resize changes to `config/user.toml`.
 - Linux companion/dialogue windows are lazy-created and currently non-transparent to avoid WebKitGTK/Wayland window-hint crashes and rendering artifacts; native transparent rendering or a sidecar renderer remains a separate path.

@@ -2749,6 +2749,10 @@ async function buildApp() {
       }),
     );
   }).catch(() => {});
+  listen("show-chat", () => {
+    document.querySelectorAll(".settings-overlay").forEach((overlay) => overlay.remove());
+    input.focus();
+  }).catch(() => {});
 
   if (!localStorage.getItem(LOCAL_LLM_ONBOARDING_KEY)) {
     document.body.append(
