@@ -163,6 +163,26 @@ fn show_window(app: &tauri::AppHandle, label: &str) -> Result<(), String> {
     let window = app
         .get_webview_window(label)
         .ok_or_else(|| format!("{label} window is not available"))?;
+    if label == "main" {
+        window
+            .set_enabled(true)
+            .map_err(|e| format!("failed to enable main window: {}", e))?;
+        window
+            .set_focusable(true)
+            .map_err(|e| format!("failed to make main window focusable: {}", e))?;
+        window
+            .set_resizable(true)
+            .map_err(|e| format!("failed to make main window resizable: {}", e))?;
+        window
+            .set_minimizable(true)
+            .map_err(|e| format!("failed to enable minimize button: {}", e))?;
+        window
+            .set_maximizable(true)
+            .map_err(|e| format!("failed to enable maximize button: {}", e))?;
+        window
+            .set_closable(true)
+            .map_err(|e| format!("failed to enable close button: {}", e))?;
+    }
     window
         .show()
         .map_err(|e| format!("failed to show {label} window: {}", e))?;
@@ -2446,7 +2466,20 @@ pub fn run() {
                             false,
                         );
                     }
-                    if let Err(error) = hide_window_and_maybe_idle_backend(app, window.label()) {
+                    if window.label() == "main" {
+                        let hide_app = app.clone();
+                        if let Err(error) = app.run_on_main_thread(move || {
+                            if let Err(error) =
+                                hide_window_and_maybe_idle_backend(&hide_app, "main")
+                            {
+                                warn!(window = "main", error, "failed to hide window on close");
+                            }
+                        }) {
+                            warn!(error = %error, "failed to defer main window hide");
+                        }
+                    } else if let Err(error) =
+                        hide_window_and_maybe_idle_backend(app, window.label())
+                    {
                         warn!(
                             window = window.label(),
                             error, "failed to hide window on close"

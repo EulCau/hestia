@@ -18,6 +18,9 @@
         "width": 900,
         "height": 780,
         "resizable": true,
+        "minimizable": true,
+        "maximizable": true,
+        "closable": true,
         "decorations": true
       }
     ],

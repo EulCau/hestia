@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Tray left-click behavior)
+**Last updated:** 2026-07-13 (Native window control restore)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -576,7 +576,7 @@ Usage:
 Arguments: none
 Returns:  string "ok"
 Errors:   string if the main window is unavailable or cannot be shown
-Side effect: Shows, unminimizes, and focuses the Tauri window labeled `main`. The main window keeps the native system titlebar created from `tauri.conf.json`; restoring it does not mutate window decorations at runtime.
+Side effect: Restores the main window's enabled, focusable, resizable, minimizable, maximizable, and closable native flags, then shows, unminimizes, and focuses it. The main window keeps the native system titlebar created from `tauri.conf.json`; restoring it does not mutate window decorations at runtime.
 Usage:    Called by the companion "Chat" control.
 ```
 
@@ -827,7 +827,7 @@ Companion dialogue bubble placement:
 - `x` and `y` are saved in physical pixels from Tauri window position APIs; `width` and `height` are saved in logical pixels and clamped to frontend min/max companion size.
 
 Window close behavior:
-- Closing `main` or `companion` hides that window instead of destroying it.
+- Closing `main` or `companion` hides that window instead of destroying it. Main-window hiding is deferred to the next native event-loop task so the system close-button event can release its non-client mouse state before the window disappears.
 - Closing `companion` also hides `companion_dialog`.
 - If all frontend windows are hidden, Hestia stops currently managed backend processes on a blocking worker thread but keeps the tray/Tauri process alive. The native window event thread remains responsive.
 - On Windows and macOS, tray left-button press opens `main`, emits `show-chat`, closes settings-style overlays, and focuses the chat input. The tray menu is not shown for left-click. Tauri does not emit tray click events on Linux.
