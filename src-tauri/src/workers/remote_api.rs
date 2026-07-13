@@ -27,6 +27,25 @@ struct ChoiceMessage {
 }
 
 #[derive(Debug, Deserialize)]
+struct ChatCompletionStreamResponse {
+    #[serde(default)]
+    choices: Vec<StreamChoice>,
+    usage: Option<Usage>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamChoice {
+    delta: StreamDelta,
+    #[serde(default)]
+    finish_reason: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+struct StreamDelta {
+    content: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub completion_tokens: u32,
@@ -76,6 +95,131 @@ impl RemoteApiWorker {
             .ok()
             .and_then(|r| r.usage)
     }
+
+    async fn infer_stream_inner(
+        &self,
+        job: &Job,
+        on_delta: &mut (dyn FnMut(String) + Send),
+    ) -> Result<serde_json::Value, WorkerError> {
+        let messages = job.payload["messages"].clone();
+        let model = self.config.model.clone();
+        let url = format!("{}/v1/chat/completions", self.config.base_url);
+        info!(
+            worker_id = %self.id,
+            job_id = %job.id,
+            model = %model,
+            "remote API worker sending streaming request"
+        );
+
+        let body = serde_json::json!({
+            "model": model,
+            "messages": messages,
+            "stream": true,
+            "stream_options": { "include_usage": true },
+        });
+
+        let mut response = self
+            .client
+            .post(&url)
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .header("Content-Type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("HTTP streaming request failed: {}", e),
+            })?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let response_text = response.text().await.unwrap_or_default();
+            return Err(WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("API returned status {}: {}", status, response_text),
+            });
+        }
+
+        let mut buffer = String::new();
+        let mut content = String::new();
+        let mut usage: Option<Usage> = None;
+        let mut finish_reason = "unknown".to_string();
+
+        while let Some(chunk) =
+            response
+                .chunk()
+                .await
+                .map_err(|e| WorkerError::InferenceFailed {
+                    worker_id: self.id.clone(),
+                    reason: format!("failed to read streaming response: {}", e),
+                })?
+        {
+            buffer.push_str(&String::from_utf8_lossy(&chunk));
+            while let Some(line_end) = buffer.find('\n') {
+                let line: String = buffer.drain(..=line_end).collect();
+                let line = line.trim();
+                let Some(data) = line.strip_prefix("data:") else {
+                    continue;
+                };
+                let data = data.trim();
+                if data == "[DONE]" {
+                    break;
+                }
+                if data.is_empty() {
+                    continue;
+                }
+                let parsed: ChatCompletionStreamResponse =
+                    serde_json::from_str(data).map_err(|e| WorkerError::InferenceFailed {
+                        worker_id: self.id.clone(),
+                        reason: format!("failed to parse streaming chunk: {}", e),
+                    })?;
+                if let Some(chunk_usage) = parsed.usage {
+                    usage = Some(chunk_usage);
+                }
+                for choice in parsed.choices {
+                    if let Some(reason) = choice.finish_reason {
+                        finish_reason = reason;
+                    }
+                    if let Some(delta) = choice.delta.content {
+                        if !delta.is_empty() {
+                            content.push_str(&delta);
+                            on_delta(delta);
+                        }
+                    }
+                }
+            }
+        }
+
+        if content.is_empty() || finish_reason == "content_filter" {
+            warn!(
+                worker_id = %self.id,
+                job_id = %job.id,
+                finish_reason,
+                "streaming API returned empty or filtered response"
+            );
+        }
+
+        let usage = usage.map(|u| {
+            serde_json::json!({
+                "prompt_tokens": u.prompt_tokens,
+                "completion_tokens": u.completion_tokens,
+                "total_tokens": u.total_tokens,
+            })
+        });
+
+        info!(
+            worker_id = %self.id,
+            job_id = %job.id,
+            response_len = content.len(),
+            "remote API worker streaming response received"
+        );
+
+        Ok(serde_json::json!({
+            "content": content,
+            "usage": usage,
+            "model": model,
+        }))
+    }
 }
 
 #[async_trait]
@@ -99,6 +243,14 @@ impl Worker for RemoteApiWorker {
             cpu_cores: None,
             memory_mb: None,
         }
+    }
+
+    async fn infer_stream(
+        &self,
+        job: &Job,
+        on_delta: &mut (dyn FnMut(String) + Send),
+    ) -> Result<serde_json::Value, WorkerError> {
+        self.infer_stream_inner(job, on_delta).await
     }
 
     async fn infer(&self, job: &Job) -> Result<serde_json::Value, WorkerError> {

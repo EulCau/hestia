@@ -35,6 +35,18 @@ pub trait Worker: Send + Sync {
     fn resource_requirements(&self) -> ResourceRequirements;
 
     async fn infer(&self, job: &Job) -> Result<serde_json::Value, WorkerError>;
+
+    async fn infer_stream(
+        &self,
+        job: &Job,
+        on_delta: &mut (dyn FnMut(String) + Send),
+    ) -> Result<serde_json::Value, WorkerError> {
+        let result = self.infer(job).await?;
+        if let Some(content) = result.get("content").and_then(serde_json::Value::as_str) {
+            on_delta(content.to_string());
+        }
+        Ok(result)
+    }
 }
 
 pub struct WorkerRegistry {

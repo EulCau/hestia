@@ -54,7 +54,10 @@
 | Prompt assembler (system prompt + active role) | `src/personality/mod.rs` | Done |
 | Role config loader | `src/personality/mod.rs` | Done |
 | `send_chat_message` Tauri command | `src/lib.rs` | Done |
+| `send_chat_message_stream` Tauri command | `src/lib.rs`, `src/workers/remote_api.rs` | Done |
 | Fallback to mock worker when no API key | `src/lib.rs` | Done |
+
+Main-window ordinary text chat now uses OpenAI-compatible streaming responses when the remote provider supports `stream: true`. The backend forwards SSE content deltas to the frontend through `chat-stream-delta` events and returns the final content for memory persistence. Explicit image generation, image recognition, image+text generation, and companion-dialogue chat continue to use the non-streaming `send_chat_message` path.
 
 ### 2.3 Configuration System
 
@@ -164,6 +167,7 @@ pub trait Worker: Send + Sync {
 | `list_personas` | Query | Available persona profiles |
 | `update_settings` | Mutate | Write settings to user.toml |
 | `send_chat_message` | Mutate | Send message, get AI reply |
+| `send_chat_message_stream` | Mutate | Send ordinary text chat and stream remote deltas to main window |
 | `submit_test_job` | Mutate | Submit job to scheduler (debug) |
 
 ### 3.4 Config Schema

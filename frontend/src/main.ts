@@ -99,14 +99,27 @@ type HistoryEntry = { role: string; content: string };
 
 const chatHistory: HistoryEntry[] = [];
 
+function createRequestId(prefix: string): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return `${prefix}-${crypto.randomUUID()}`;
+  }
+  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
 interface ChatResponse {
   content: string;
   rewritten?: boolean;
+  streamed?: boolean;
   generated_image?: boolean;
   image_prompt?: string;
   input_image_path?: string;
   mode?: string;
   images?: string[];
+}
+
+interface ChatStreamDelta {
+  request_id: string;
+  delta: string;
 }
 
 interface VisionResponse {
@@ -3313,11 +3326,57 @@ async function handleImageReferenceGeneration(
   }
 }
 
+async function invokeStreamingChat(
+  outgoingText: string,
+  loadingMessage: HTMLElement,
+  messages: HTMLElement,
+): Promise<ChatResponse> {
+  const requestId = createRequestId("chat");
+  let content = "";
+  let messageElement: HTMLElement | undefined;
+  const ensureMessageElement = () => {
+    if (!messageElement) {
+      loadingMessage.remove();
+      messageElement = addMessage(messages, "assistant", "");
+    }
+    return messageElement;
+  };
+  const unlisten = await listen<ChatStreamDelta>("chat-stream-delta", (event) => {
+    if (event.payload.request_id !== requestId) return;
+    content += event.payload.delta;
+    ensureMessageElement().textContent = content;
+    messages.scrollTop = messages.scrollHeight;
+  });
+
+  try {
+    const raw = await invoke<string>("send_chat_message_stream", {
+      requestId,
+      message: outgoingText,
+      history: chatHistory,
+    });
+    const response = JSON.parse(raw) as ChatResponse;
+    content = response.content || content;
+    const finalMessageElement = ensureMessageElement();
+    finalMessageElement.textContent = content;
+    if (response.generated_image) {
+      finalMessageElement.setAttribute("data-generated-image", "true");
+      if (response.image_prompt) {
+        finalMessageElement.setAttribute("title", response.image_prompt);
+      }
+      await appendGeneratedImages(finalMessageElement, response.images ?? []);
+    }
+    return { ...response, content };
+  } finally {
+    unlisten();
+  }
+}
+
 async function handleSend(input: HTMLTextAreaElement, buttons: HTMLButtonElement[], messages: HTMLElement, mode: "chat" | "image") {
   const text = input.value.trim();
   if (!text) return;
   const outgoingText = mode === "image" ? `\\image ${text}` : text;
   const loadingText = mode === "image" || text.startsWith("\\image") || text.startsWith("/image") ? "Generating image..." : "Thinking...";
+  const useStreaming = mode === "chat" && !text.startsWith("\\image") && !text.startsWith("/image");
 
   addMessage(messages, "user", outgoingText);
   input.value = "";
@@ -3328,30 +3387,37 @@ async function handleSend(input: HTMLTextAreaElement, buttons: HTMLButtonElement
   const loadingMessage = addMessage(messages, "loading", loadingText);
 
   try {
-    const raw = await invoke<string>("send_chat_message", {
-      message: outgoingText,
-      history: chatHistory,
-      inputImagePath: null,
-      imageMode: mode === "image" ? "text_to_image" : null,
-      denoise: null,
-    });
-    const response = JSON.parse(raw) as ChatResponse;
-    const content = response.content || "";
-    loadingMessage.remove();
-    const messageElement = addMessage(messages, "assistant", content);
-    if (response.rewritten) {
-      messageElement.setAttribute("data-rewritten", "true");
-      messageElement.title = "Rewritten by local LLM";
-    }
-    if (response.generated_image) {
-      messageElement.setAttribute("data-generated-image", "true");
-      if (response.image_prompt) {
-        messageElement.setAttribute("title", response.image_prompt);
+    if (useStreaming) {
+      const response = await invokeStreamingChat(outgoingText, loadingMessage, messages);
+      const content = response.content || "";
+      chatHistory.push({ role: "user", content: outgoingText });
+      chatHistory.push({ role: "assistant", content });
+    } else {
+      const raw = await invoke<string>("send_chat_message", {
+        message: outgoingText,
+        history: chatHistory,
+        inputImagePath: null,
+        imageMode: mode === "image" ? "text_to_image" : null,
+        denoise: null,
+      });
+      const response = JSON.parse(raw) as ChatResponse;
+      const content = response.content || "";
+      loadingMessage.remove();
+      const messageElement = addMessage(messages, "assistant", content);
+      if (response.rewritten) {
+        messageElement.setAttribute("data-rewritten", "true");
+        messageElement.title = "Rewritten by local LLM";
       }
-      await appendGeneratedImages(messageElement, response.images ?? []);
+      if (response.generated_image) {
+        messageElement.setAttribute("data-generated-image", "true");
+        if (response.image_prompt) {
+          messageElement.setAttribute("title", response.image_prompt);
+        }
+        await appendGeneratedImages(messageElement, response.images ?? []);
+      }
+      chatHistory.push({ role: "user", content: outgoingText });
+      chatHistory.push({ role: "assistant", content });
     }
-    chatHistory.push({ role: "user", content: outgoingText });
-    chatHistory.push({ role: "assistant", content });
   } catch (error) {
     loadingMessage.remove();
     addMessage(messages, "error", String(error));

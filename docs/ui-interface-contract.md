@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-12 (Image-to-image generation)
+**Last updated:** 2026-07-13 (Streaming chat)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -252,6 +252,48 @@ Async:    YES. This is the primary long-running operation.
 UI State:
   BEFORE:  disable textarea and send/image buttons, show "Thinking..." or "Generating image..."
   AFTER:   remove placeholder, render response and generated image previews, re-enable input
+  ON ERR:  remove placeholder, render error message, re-enable input
+```
+
+#### `send_chat_message_stream`
+```
+Arguments: {
+  requestId: string,
+  message: string,
+  history: { role: string, content: string }[]
+}
+Returns:  string (JSON)
+  {
+    "content": string,
+    "rewritten": false,
+    "streamed": true,
+    "usage"?: {
+      "prompt_tokens": number,
+      "completion_tokens": number,
+      "total_tokens": number
+    }|null,
+    "model"?: string|null,
+    "generated_image"?: boolean,
+    "image_prompt"?: string,
+    "negative_prompt"?: string|null,
+    "images"?: string[]
+  }
+Events:   emits `chat-stream-delta` to the `main` window while the request is running
+          Payload: { request_id: string, delta: string }
+Errors:   string — e.g. "streaming inference failed: ..." or "failed to load persona: ..."
+Async:    YES. Used by the main chat for ordinary text chat.
+          Timeline:
+            1. Records user activity
+            2. Runs the same text-to-image intent classifier as `send_chat_message`
+            3. If should_generate=true, runs image generation and returns a non-streaming generated-image response
+            4. Otherwise PromptAssembler loads active role JSON and memory context
+            5. RemoteApiWorker sends OpenAI-compatible `stream: true`
+            6. Each SSE content delta is forwarded as `chat-stream-delta`
+            7. Final content is stored in automatic memory and returned
+UI State:
+  BEFORE:  disable textarea and send/image buttons, show "Thinking..."
+  DURING:  first delta replaces the placeholder with an assistant message and appends text in place
+  AFTER:   reconcile final content, append generated image previews if present, re-enable input
   ON ERR:  remove placeholder, render error message, re-enable input
 ```
 

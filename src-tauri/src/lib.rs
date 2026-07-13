@@ -1860,6 +1860,131 @@ async fn send_chat_message(
     .to_string())
 }
 
+#[tauri::command]
+async fn send_chat_message_stream(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    request_id: String,
+    message: String,
+    history: Vec<personality::ChatMessage>,
+) -> Result<String, String> {
+    if let Ok(mut initiative) = state.initiative.lock() {
+        initiative.record_user_activity();
+    }
+
+    let image_intent = classify_image_intent(&state, &message, &history).await;
+    if image_intent.should_generate {
+        let prompt = image_intent
+            .image_prompt
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or(message.trim())
+            .to_string();
+        let result = run_image_generation(
+            &state,
+            ImageGenerationRequest {
+                prompt: prompt.clone(),
+                negative_prompt: image_intent.negative_prompt.clone(),
+                mode: "text_to_image".into(),
+                input_image_path: None,
+                denoise: None,
+            },
+        )
+        .await?;
+        let content = image_intent
+            .response_text
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .unwrap_or("我判断这条消息是在请求生图, 已把提示词交给 ComfyUI.");
+        remember_interaction(&current_role_id(&state), &message, content, "chat");
+        return Ok(serde_json::json!({
+            "content": content,
+            "rewritten": false,
+            "generated_image": true,
+            "image_prompt": prompt,
+            "negative_prompt": image_intent.negative_prompt,
+            "images": result.get("images").cloned().unwrap_or_else(|| serde_json::json!([])),
+            "prompt_id": result.get("prompt_id").cloned(),
+            "workflow_path": result.get("workflow_path").cloned(),
+            "mode": result.get("mode").cloned(),
+        })
+        .to_string());
+    }
+
+    let cfg = current_config(&state);
+    let role_id = cfg.personality.default_profile.clone();
+    let assembler = PromptAssembler::load(&role_id)
+        .map_err(|e| format!("failed to load persona: {}", e))?
+        .with_system_prompt_language(cfg.app.language.system_prompt.clone());
+    let persona_name = assembler.persona_name().to_string();
+
+    let memories = memory::relevant_memories(&role_id, &message, 8).unwrap_or_else(|e| {
+        warn!(error = %e, "failed to load memory context");
+        Vec::new()
+    });
+    let memory_context = memory::format_memory_context(&memories, &cfg.app.language.memory);
+    let messages =
+        assembler.assemble_messages_with_context(&message, &history, memory_context.as_deref());
+    let messages_json = serde_json::Value::Array(messages);
+
+    if cfg.observability.prompt_logs {
+        observability::log_prompt(&messages_json);
+    }
+
+    let job = crate::protocol::Job::new(
+        "chat_stream",
+        crate::protocol::Capability::Chat,
+        serde_json::json!({ "messages": messages_json }),
+    );
+
+    info!(
+        job_id = %job.id,
+        persona = %persona_name,
+        "sending streaming chat message to remote API"
+    );
+
+    let event_app = app.clone();
+    let event_request_id = request_id.clone();
+    let mut emit_delta = move |delta: String| {
+        let _ = event_app.emit_to(
+            "main",
+            "chat-stream-delta",
+            serde_json::json!({
+                "request_id": event_request_id.clone(),
+                "delta": delta,
+            }),
+        );
+    };
+    let result = state
+        .remote_worker
+        .infer_stream(&job, &mut emit_delta)
+        .await
+        .map_err(|e| {
+            error!(error = %e, "remote streaming inference failed");
+            format!("streaming inference failed: {}", e)
+        })?;
+
+    let raw_content = result["content"].as_str().unwrap_or("").to_string();
+    if cfg.observability.token_usage {
+        if let Some(usage) = result.get("usage") {
+            let model = result["model"].as_str().unwrap_or("unknown");
+            observability::log_token_usage(model, usage);
+        }
+    }
+
+    remember_interaction(&role_id, &message, &raw_content, "chat");
+    Ok(serde_json::json!({
+        "content": raw_content,
+        "rewritten": false,
+        "streamed": true,
+        "usage": result.get("usage").cloned(),
+        "model": result.get("model").cloned(),
+    })
+    .to_string())
+}
+
 async fn wait_for_local_worker_health(worker: &LocalLlmWorker, timeout_ms: u64) -> bool {
     let started = Instant::now();
     loop {
@@ -2247,6 +2372,7 @@ pub fn run() {
             delete_memory,
             compress_memories,
             send_chat_message,
+            send_chat_message_stream,
             generate_test_image,
         ])
         .build(tauri::generate_context!())
