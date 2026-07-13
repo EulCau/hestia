@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tracing::info;
 
@@ -82,14 +82,33 @@ pub struct PromptAssembler {
     system_prompt_language: String,
 }
 
+#[derive(Debug, Clone, Serialize)]
+pub struct SystemPromptTemplate {
+    pub id: String,
+    pub title: String,
+    pub description: String,
+    pub content: String,
+    pub default_content: String,
+    pub overridden: bool,
+}
+
 pub fn runtime_metadata_message() -> serde_json::Value {
+    runtime_metadata_message_with_language("en")
+}
+
+pub fn runtime_metadata_message_with_language(language: &str) -> serde_json::Value {
     let timestamp_ms = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
         .unwrap_or(0);
+    let content = render_named_template(
+        &read_system_prompt_template("runtime_metadata", language)
+            .unwrap_or_else(|_| default_runtime_metadata_template(language)),
+        &[("timestamp_ms", timestamp_ms.to_string())],
+    );
     serde_json::json!({
         "role": "system",
-        "content": format!("Current request timestamp (unix_ms): {timestamp_ms}. This dynamic metadata is intentionally placed last to preserve prompt-prefix cacheability."),
+        "content": content,
     })
 }
 
@@ -115,47 +134,37 @@ impl PromptAssembler {
         } else {
             format!("{}, {}", self.persona.name, self.persona.aliases.join(", "))
         };
-        if self.system_prompt_language == "zh-CN" {
-            [
-                "你正在扮演下方描述的角色. 用户提到任何列出的名字或别名时, 都是在指代你扮演的这个角色.",
-                "基础风格规则:",
-                "- 使用中文回复时, 只使用半角标点: , . ; : ? !",
-                "- 合适时可以用括号写简短动作, 状态, 语气或表情.",
-                "- 风格不能覆盖事实, 推理, 安全要求或用户当前请求.",
-                "- 如果长期记忆和用户当前消息冲突, 以用户当前消息为准.",
-                "- 动态运行信息, 包括时间戳, 会放在消息列表末尾.",
-                "",
-                "角色设定:",
-                &format!("- 名字和别名: {aliases}"),
-                &format!("- 身份: {}", empty_as_unspecified_zh(&self.persona.identity)),
-                &format!("- 物种: {}", empty_as_unspecified_zh(&self.persona.species)),
-                &format!("- 外观: {}", empty_as_unspecified_zh(&self.persona.appearance)),
-                &format!("- 性格: {}", empty_as_unspecified_zh(&self.persona.personality)),
-                &format!("- 语言习惯: {}", empty_as_unspecified_zh(&self.persona.language_style)),
-                &format!("- 场景: {}", empty_as_unspecified_zh(&self.persona.scenario)),
-            ]
-            .join("\n")
+        let language = self.system_prompt_language.as_str();
+        let template = read_system_prompt_template("role_system", language)
+            .unwrap_or_else(|_| default_role_system_template(language));
+        let unspecified = if language == "zh-CN" {
+            empty_as_unspecified_zh
         } else {
-            [
-                "You are the character described below. The user's references to any listed name or alias refer to you, the character you are role-playing.",
-                "Base style rules:",
-                "- When replying in Chinese, use halfwidth punctuation only: , . ; : ? !",
-                "- Parentheses may be used for brief actions, states, tone, or expressions when appropriate.",
-                "- Do not let style override facts, reasoning, safety, or the user's current request.",
-                "- If long-term memory conflicts with the current user message, prefer the current user message.",
-                "- Dynamic runtime metadata, including timestamps, is supplied at the end of the message list.",
-                "",
-                "Character profile:",
-                &format!("- Name and aliases: {aliases}"),
-                &format!("- Identity: {}", empty_as_unspecified(&self.persona.identity)),
-                &format!("- Species: {}", empty_as_unspecified(&self.persona.species)),
-                &format!("- Appearance: {}", empty_as_unspecified(&self.persona.appearance)),
-                &format!("- Personality: {}", empty_as_unspecified(&self.persona.personality)),
-                &format!("- Language habits: {}", empty_as_unspecified(&self.persona.language_style)),
-                &format!("- Scenario: {}", empty_as_unspecified(&self.persona.scenario)),
-            ]
-            .join("\n")
-        }
+            empty_as_unspecified
+        };
+        render_named_template(
+            &template,
+            &[
+                ("name", self.persona.name.clone()),
+                ("aliases", aliases),
+                ("identity", unspecified(&self.persona.identity).to_string()),
+                ("species", unspecified(&self.persona.species).to_string()),
+                (
+                    "appearance",
+                    unspecified(&self.persona.appearance).to_string(),
+                ),
+                (
+                    "personality",
+                    unspecified(&self.persona.personality).to_string(),
+                ),
+                (
+                    "language_style",
+                    unspecified(&self.persona.language_style).to_string(),
+                ),
+                ("scenario", unspecified(&self.persona.scenario).to_string()),
+                ("tone", unspecified(&self.persona.tone).to_string()),
+            ],
+        )
     }
 
     pub fn assemble_messages_with_context(
@@ -185,7 +194,9 @@ impl PromptAssembler {
             "role": "user",
             "content": user_message,
         }));
-        messages.push(runtime_metadata_message());
+        messages.push(runtime_metadata_message_with_language(
+            &self.system_prompt_language,
+        ));
         messages
     }
 
@@ -254,6 +265,246 @@ fn user_data_root() -> PathBuf {
 
 fn user_persona_dir() -> PathBuf {
     user_data_root().join("roles")
+}
+
+fn user_prompt_dir() -> PathBuf {
+    user_data_root().join("prompts")
+}
+
+fn sanitize_prompt_language(language: &str) -> String {
+    match language.trim() {
+        "zh-CN" => "zh-CN".into(),
+        _ => "en".into(),
+    }
+}
+
+fn sanitize_prompt_id(id: &str) -> String {
+    match id.trim() {
+        "role_system" | "memory_context" | "runtime_metadata" => id.trim().into(),
+        _ => "role_system".into(),
+    }
+}
+
+fn prompt_template_path(id: &str, language: &str) -> PathBuf {
+    user_prompt_dir()
+        .join(sanitize_prompt_language(language))
+        .join(format!("{}.md", sanitize_prompt_id(id)))
+}
+
+fn default_role_system_template(language: &str) -> String {
+    if language == "zh-CN" {
+        [
+            "你正在扮演下方描述的角色. 用户提到任何列出的名字或别名时, 都是在指代你扮演的这个角色.",
+            "",
+            "## 基础风格规则",
+            "- 使用中文回复时, 只使用半角标点: , . ; : ? !",
+            "- 合适时可以用括号写简短动作, 状态, 语气或表情.",
+            "- 风格不能覆盖事实, 推理, 安全要求或用户当前请求.",
+            "- 如果长期记忆和用户当前消息冲突, 以用户当前消息为准.",
+            "- 动态运行信息, 包括时间戳, 会放在消息列表末尾.",
+            "",
+            "## 角色设定",
+            "- 名字和别名: {aliases}",
+            "- 身份: {identity}",
+            "- 物种: {species}",
+            "- 外观: {appearance}",
+            "- 性格: {personality}",
+            "- 语言习惯: {language_style}",
+            "- 场景: {scenario}",
+            "- 总体语气: {tone}",
+        ]
+        .join("\n")
+    } else {
+        [
+            "You are the character described below. The user's references to any listed name or alias refer to you, the character you are role-playing.",
+            "",
+            "## Base style rules",
+            "- When replying in Chinese, use halfwidth punctuation only: , . ; : ? !",
+            "- Parentheses may be used for brief actions, states, tone, or expressions when appropriate.",
+            "- Do not let style override facts, reasoning, safety, or the user's current request.",
+            "- If long-term memory conflicts with the current user message, prefer the current user message.",
+            "- Dynamic runtime metadata, including timestamps, is supplied at the end of the message list.",
+            "",
+            "## Character profile",
+            "- Name and aliases: {aliases}",
+            "- Identity: {identity}",
+            "- Species: {species}",
+            "- Appearance: {appearance}",
+            "- Personality: {personality}",
+            "- Language habits: {language_style}",
+            "- Scenario: {scenario}",
+            "- Overall tone: {tone}",
+        ]
+        .join("\n")
+    }
+}
+
+fn default_memory_context_template(language: &str) -> String {
+    if language == "zh-CN" {
+        [
+            "相关长期记忆. 只在有助于回答当前请求时使用. 如果它和用户当前消息冲突, 优先相信用户当前消息.",
+            "",
+            "{memory_items}",
+        ]
+        .join("\n")
+    } else {
+        [
+            "Relevant long-term memory. Use only when it helps answer the current request. If it conflicts with the current user message, prefer the current user message.",
+            "",
+            "{memory_items}",
+        ]
+        .join("\n")
+    }
+}
+
+fn default_runtime_metadata_template(language: &str) -> String {
+    if language == "zh-CN" {
+        "当前请求时间戳 (unix_ms): {timestamp_ms}. 此动态元数据故意放在消息列表末尾, 以保留提示词前缀缓存命中率.".into()
+    } else {
+        "Current request timestamp (unix_ms): {timestamp_ms}. This dynamic metadata is intentionally placed last to preserve prompt-prefix cacheability.".into()
+    }
+}
+
+fn default_system_prompt_template(id: &str, language: &str) -> String {
+    match sanitize_prompt_id(id).as_str() {
+        "memory_context" => default_memory_context_template(language),
+        "runtime_metadata" => default_runtime_metadata_template(language),
+        _ => default_role_system_template(language),
+    }
+}
+
+fn read_system_prompt_template(
+    id: &str,
+    language: &str,
+) -> Result<String, Box<dyn std::error::Error>> {
+    let path = prompt_template_path(id, language);
+    if path.exists() {
+        return Ok(std::fs::read_to_string(path)?);
+    }
+    Ok(default_system_prompt_template(
+        id,
+        &sanitize_prompt_language(language),
+    ))
+}
+
+pub fn list_system_prompt_templates(
+    language: &str,
+) -> Result<Vec<SystemPromptTemplate>, Box<dyn std::error::Error>> {
+    let language = sanitize_prompt_language(language);
+    let items = [
+        (
+            "role_system",
+            if language == "zh-CN" {
+                "角色基础系统提示词"
+            } else {
+                "Role base system prompt"
+            },
+            if language == "zh-CN" {
+                "定义角色扮演边界, 基础风格规则, 以及角色字段如何注入主聊天提示词."
+            } else {
+                "Defines role-play boundaries, base style rules, and how role fields enter the main chat prompt."
+            },
+        ),
+        (
+            "memory_context",
+            if language == "zh-CN" {
+                "长期记忆上下文提示词"
+            } else {
+                "Long-term memory context prompt"
+            },
+            if language == "zh-CN" {
+                "定义相关记忆如何作为系统上下文提供给模型. {memory_items} 会被替换为记忆条目列表."
+            } else {
+                "Defines how relevant memories are supplied as system context. {memory_items} is replaced with memory bullet items."
+            },
+        ),
+        (
+            "runtime_metadata",
+            if language == "zh-CN" {
+                "动态运行信息提示词"
+            } else {
+                "Dynamic runtime metadata prompt"
+            },
+            if language == "zh-CN" {
+                "定义每次请求末尾追加的动态信息. {timestamp_ms} 会被替换为当前请求时间戳."
+            } else {
+                "Defines dynamic metadata appended at the end of each request. {timestamp_ms} is replaced with the current request timestamp."
+            },
+        ),
+    ];
+    items
+        .into_iter()
+        .map(|(id, title, description)| {
+            let default_content = default_system_prompt_template(id, &language);
+            let path = prompt_template_path(id, &language);
+            let overridden = path.exists();
+            let content = if overridden {
+                std::fs::read_to_string(&path)?
+            } else {
+                default_content.clone()
+            };
+            Ok(SystemPromptTemplate {
+                id: id.into(),
+                title: title.into(),
+                description: description.into(),
+                content,
+                default_content,
+                overridden,
+            })
+        })
+        .collect()
+}
+
+pub fn save_system_prompt_template(
+    id: &str,
+    language: &str,
+    content: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = prompt_template_path(id, language);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, content)?;
+    Ok(())
+}
+
+pub fn reset_system_prompt_template(
+    id: &str,
+    language: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = prompt_template_path(id, language);
+    if path.exists() {
+        std::fs::remove_file(&path)?;
+    }
+    cleanup_empty_prompt_dirs(path.parent());
+    Ok(())
+}
+
+fn cleanup_empty_prompt_dirs(dir: Option<&Path>) {
+    let Some(dir) = dir else {
+        return;
+    };
+    if dir
+        .read_dir()
+        .map(|mut entries| entries.next().is_none())
+        .unwrap_or(false)
+    {
+        let _ = std::fs::remove_dir(dir);
+    }
+}
+
+pub fn render_memory_context_template(language: &str, memory_items: &str) -> String {
+    let template = read_system_prompt_template("memory_context", language)
+        .unwrap_or_else(|_| default_memory_context_template(language));
+    render_named_template(&template, &[("memory_items", memory_items.to_string())])
+}
+
+fn render_named_template(template: &str, values: &[(&str, String)]) -> String {
+    let mut rendered = template.to_string();
+    for (key, value) in values {
+        rendered = rendered.replace(&format!("{{{key}}}"), value);
+    }
+    rendered
 }
 
 fn bundled_persona_dir_candidates() -> Vec<PathBuf> {

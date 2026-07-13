@@ -766,6 +766,31 @@ fn list_available_models(state: tauri::State<'_, AppState>) -> String {
 }
 
 #[tauri::command]
+fn list_system_prompt_templates(language: String) -> Result<String, String> {
+    personality::list_system_prompt_templates(&language)
+        .and_then(|templates| Ok(serde_json::to_string(&templates)?))
+        .map_err(|e| format!("failed to list system prompt templates: {}", e))
+}
+
+#[tauri::command]
+fn save_system_prompt_template(
+    language: String,
+    id: String,
+    content: String,
+) -> Result<String, String> {
+    personality::save_system_prompt_template(&id, &language, &content)
+        .map_err(|e| format!("failed to save system prompt template: {}", e))?;
+    Ok("ok".into())
+}
+
+#[tauri::command]
+fn reset_system_prompt_template(language: String, id: String) -> Result<String, String> {
+    personality::reset_system_prompt_template(&id, &language)
+        .map_err(|e| format!("failed to reset system prompt template: {}", e))?;
+    Ok("ok".into())
+}
+
+#[tauri::command]
 fn get_screenshot_metadata(state: tauri::State<'_, AppState>) -> String {
     screenshot_metadata(
         state.config.multimodal.screenshot.enabled,
@@ -2346,6 +2371,9 @@ pub fn run() {
             list_personas,
             list_roles,
             list_available_models,
+            list_system_prompt_templates,
+            save_system_prompt_template,
+            reset_system_prompt_template,
             get_screenshot_metadata,
             set_companion_visible,
             set_companion_dialog_visible,

@@ -122,6 +122,15 @@ interface ChatStreamDelta {
   delta: string;
 }
 
+interface SystemPromptTemplate {
+  id: string;
+  title: string;
+  description: string;
+  content: string;
+  default_content: string;
+  overridden: boolean;
+}
+
 interface VisionResponse {
   content: string;
   model?: string;
@@ -962,6 +971,166 @@ function setStatus(status: HTMLElement, ok: boolean, text: string) {
   status.className = ok ? "settings-status ok" : "settings-status error";
   status.textContent = text;
   status.style.display = "block";
+}
+
+function renderMarkdown(markdown: string): HTMLElement {
+  const root = el("div", { class: "markdown-preview" });
+  const lines = markdown.split(/\r?\n/);
+  let paragraph: string[] = [];
+  let list: HTMLUListElement | null = null;
+  let codeBlock: HTMLElement | null = null;
+
+  const flushParagraph = () => {
+    if (paragraph.length > 0) {
+      root.append(el("p", {}, paragraph.join(" ")));
+      paragraph = [];
+    }
+  };
+  const closeList = () => {
+    list = null;
+  };
+
+  lines.forEach((line) => {
+    if (line.startsWith("```")) {
+      flushParagraph();
+      closeList();
+      if (codeBlock) {
+        codeBlock = null;
+      } else {
+        codeBlock = el("pre", {}, el("code"));
+        root.append(codeBlock);
+      }
+      return;
+    }
+    if (codeBlock) {
+      const code = codeBlock.querySelector("code");
+      if (code) code.textContent = `${code.textContent ?? ""}${line}\n`;
+      return;
+    }
+    if (!line.trim()) {
+      flushParagraph();
+      closeList();
+      return;
+    }
+    const heading = line.match(/^(#{1,3})\s+(.+)$/);
+    if (heading) {
+      flushParagraph();
+      closeList();
+      const level = heading[1].length === 1 ? "h4" : "h5";
+      root.append(el(level, {}, heading[2]));
+      return;
+    }
+    const bullet = line.match(/^[-*]\s+(.+)$/);
+    if (bullet) {
+      flushParagraph();
+      if (!list) {
+        list = el("ul");
+        root.append(list);
+      }
+      list.append(el("li", {}, bullet[1]));
+      return;
+    }
+    closeList();
+    paragraph.push(line.trim());
+  });
+  flushParagraph();
+  return root;
+}
+
+function buildSystemPromptSettingsPage(cfg: ConfigSnapshot, status: HTMLElement): HTMLElement {
+  const page = el("div", { class: "settings-section prompt-settings" });
+  const list = el("div", { class: "prompt-template-list" });
+  const language = cfg.app.language.system_prompt || "en";
+
+  const renderTemplateCard = (template: SystemPromptTemplate) => {
+    let editing = false;
+    let draft = template.content;
+    const preview = el("div", { class: "prompt-template-preview" });
+    const editor = el("textarea", { class: "prompt-template-editor", spellcheck: "false" }) as HTMLTextAreaElement;
+    editor.value = draft;
+    const editBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.prompt.edit"));
+    const resetBtn = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.prompt.restore"));
+    const saveBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("check", 16), t("settings.prompt.save"));
+    const state = el("span", { class: template.overridden ? "prompt-template-state changed" : "prompt-template-state" }, template.overridden ? t("settings.prompt.overridden") : t("settings.prompt.default"));
+    const body = el("div", { class: "prompt-template-body" });
+
+    const renderBody = () => {
+      body.replaceChildren();
+      preview.replaceChildren(renderMarkdown(draft));
+      if (editing) {
+        editor.value = draft;
+        body.append(editor);
+        editBtn.textContent = t("settings.prompt.preview");
+        saveBtn.style.display = "";
+      } else {
+        body.append(preview);
+        editBtn.textContent = t("settings.prompt.edit");
+        saveBtn.style.display = "none";
+      }
+    };
+
+    editBtn.addEventListener("click", () => {
+      if (editing) {
+        draft = editor.value;
+      }
+      editing = !editing;
+      renderBody();
+    });
+    saveBtn.addEventListener("click", async () => {
+      draft = editor.value;
+      try {
+        await invoke("save_system_prompt_template", { language, id: template.id, content: draft });
+        state.className = "prompt-template-state changed";
+        state.textContent = t("settings.prompt.overridden");
+        editing = false;
+        renderBody();
+        setStatus(status, true, t("settings.prompt.saved"));
+      } catch (error) {
+        setStatus(status, false, String(error));
+      }
+    });
+    resetBtn.addEventListener("click", async () => {
+      try {
+        await invoke("reset_system_prompt_template", { language, id: template.id });
+        draft = template.default_content;
+        state.className = "prompt-template-state";
+        state.textContent = t("settings.prompt.default");
+        editing = false;
+        renderBody();
+        setStatus(status, true, t("settings.prompt.restored"));
+      } catch (error) {
+        setStatus(status, false, String(error));
+      }
+    });
+
+    renderBody();
+    return el(
+      "article",
+      { class: "prompt-template-card" },
+      el("div", { class: "prompt-template-header" }, el("div", {}, el("h4", {}, template.title), el("p", {}, template.description)), state),
+      body,
+      el("div", { class: "settings-actions" }, editBtn, saveBtn, resetBtn),
+    );
+  };
+
+  const loadTemplates = async () => {
+    list.replaceChildren(el("div", { class: "settings-hint" }, t("settings.prompt.loading")));
+    try {
+      const templates = JSON.parse(await invoke<string>("list_system_prompt_templates", { language })) as SystemPromptTemplate[];
+      list.replaceChildren(...templates.map(renderTemplateCard));
+    } catch (error) {
+      list.replaceChildren();
+      setStatus(status, false, String(error));
+    }
+  };
+
+  page.append(
+    el("h3", {}, t("settings.module.prompts")),
+    el("div", { class: "settings-hint" }, t("settings.prompt.languageHint", { language: t(`lang.${language}`) })),
+    list,
+  );
+  void loadTemplates();
+  return page;
 }
 
 function buildPersonaEditor(cfg: ConfigSnapshot): HTMLElement {
@@ -2197,6 +2366,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
         fieldRow(t("settings.speakingMotion"), avatarSpeakingMotion),
       ),
     ],
+    ["prompts", buildSystemPromptSettingsPage(cfg, status)],
     [
       "remote",
       el(

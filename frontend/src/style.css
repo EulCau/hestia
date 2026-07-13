@@ -642,6 +642,114 @@ button {
   gap: 10px;
 }
 
+.prompt-settings {
+  gap: 14px;
+}
+
+.prompt-template-list {
+  display: grid;
+  gap: 14px;
+}
+
+.prompt-template-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+}
+
+.prompt-template-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+}
+
+.prompt-template-header h4 {
+  margin: 0 0 5px;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.prompt-template-header p {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+
+.prompt-template-state {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  white-space: nowrap;
+}
+
+.prompt-template-state.changed {
+  border-color: var(--accent);
+  color: var(--accent-text);
+}
+
+.prompt-template-body {
+  min-width: 0;
+}
+
+.prompt-template-preview {
+  max-height: 260px;
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--bg-primary);
+}
+
+.markdown-preview {
+  display: grid;
+  gap: 8px;
+  color: var(--text-primary);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
+.markdown-preview h4,
+.markdown-preview h5,
+.markdown-preview p,
+.markdown-preview ul,
+.markdown-preview pre {
+  margin: 0;
+}
+
+.markdown-preview h4,
+.markdown-preview h5 {
+  color: var(--text-primary);
+  font-size: 0.88rem;
+}
+
+.markdown-preview ul {
+  padding-left: 18px;
+}
+
+.markdown-preview pre {
+  overflow: auto;
+  padding: 10px;
+  border-radius: 7px;
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.prompt-template-editor {
+  width: 100%;
+  min-height: 260px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
 .live2d-debug-panel {
   width: min(620px, 100%);
 }

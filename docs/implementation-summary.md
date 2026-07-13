@@ -662,3 +662,5 @@ Language preferences are stored under `[app.language]`:
 - `memory`: memory-context instruction language
 
 Changing `system_prompt` language can reduce prompt-prefix cache hit rate. Changing `memory` language can make old and new memory context appear in mixed languages.
+
+The Settings panel also includes a System Prompts module. It lists prompt templates for the selected system prompt language, renders Markdown previews, and supports per-template edit, preview, save, and restore-default actions. User overrides are stored in the user data directory under `prompts/{language}/{id}.md`; the role system prompt, memory context prompt, and dynamic runtime metadata prompt use those overrides on the next request.

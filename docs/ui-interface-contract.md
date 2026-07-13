@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Streaming chat)
+**Last updated:** 2026-07-13 (System prompt settings)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -80,6 +80,31 @@ Usage:    Used by the Memory panel. Storage is usr/memory/{active_role}/memories
 ```
 
 #### `list_available_models`
+```
+Arguments: none
+Returns:  string (JSON) — ModelInfo[]
+Errors:   never
+Usage:    Scans the configured models_dir (default ~/models) for .gguf files.
+          Directory structure: $models_dir/$manufacturer/$modelName.gguf
+```
+
+#### `list_system_prompt_templates`
+```
+Arguments: { language: "en" | "zh-CN" | string }
+Returns:  string (JSON) — SystemPromptTemplate[]
+  {
+    id: string,
+    title: string,
+    description: string,
+    content: string,
+    default_content: string,
+    overridden: boolean
+  }[]
+Errors:   string if user prompt override files cannot be read
+Usage:    Settings > System Prompts page. Templates are selected by
+          ConfigSnapshot.app.language.system_prompt. User overrides are stored
+          under the user data directory, e.g. usr/prompts/{language}/{id}.md
+          in development.
 ```
 
 #### `get_screenshot_metadata`
@@ -213,6 +238,25 @@ Side effect: Writes to config/user.toml. Does NOT hot-reload the backend.
              Avatar changes emit `avatar-config-changed` to `main`,
              `companion`, and `companion_dialog` so visible avatar adapters can
              unmount the old renderer and mount the new renderer immediately.
+```
+
+#### `save_system_prompt_template`
+```
+Arguments: { language: string, id: string, content: string }
+Returns:  string "ok"
+Errors:   string if the user prompt override cannot be written
+Side effect: Writes usr/prompts/{language}/{id}.md in development, or the
+             platform user data directory in packaged builds. The next prompt
+             assembly reads the override.
+```
+
+#### `reset_system_prompt_template`
+```
+Arguments: { language: string, id: string }
+Returns:  string "ok"
+Errors:   string if the user prompt override cannot be removed
+Side effect: Deletes the user prompt override so the bundled default template is
+             used on the next prompt assembly.
 ```
 
 #### `send_chat_message`
@@ -1080,6 +1124,14 @@ Language preferences:
 - `app.language.ui` controls GUI strings.
 - `app.language.system_prompt` controls the base character system prompt. Changing it can reduce prompt-prefix cache hit rate because stable prompt text changes.
 - `app.language.memory` controls the memory-context instruction text injected into chat prompts. Changing it can make memory context appear in mixed languages when existing memories were written in another language.
+
+The Settings panel includes a dedicated System Prompts page. It reads templates
+for the currently selected `app.language.system_prompt`, renders Markdown
+previews, and allows edit/preview/save/reset per template. Template variables are
+shown with the same placeholders used by code, for example `{aliases}`,
+`{personality}`, `{memory_items}`, and `{timestamp_ms}`. User edits are stored as
+prompt override files under the user data directory and take effect on the next
+prompt assembly.
 
 ### 8.4 update_settings Key
 
