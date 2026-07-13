@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Role avatar asset loading)
+**Last updated:** 2026-07-13 (Native titlebar restore)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -575,7 +575,7 @@ Usage:
 Arguments: none
 Returns:  string "ok"
 Errors:   string if the main window is unavailable or cannot be shown
-Side effect: Shows, unminimizes, focuses, and enables the system titlebar on the Tauri window labeled `main`.
+Side effect: Shows, unminimizes, and focuses the Tauri window labeled `main`. The main window keeps the native system titlebar created from `tauri.conf.json`; restoring it does not mutate window decorations at runtime.
 Usage:    Called by the companion "Chat" control.
 ```
 
@@ -828,7 +828,7 @@ Companion dialogue bubble placement:
 Window close behavior:
 - Closing `main` or `companion` hides that window instead of destroying it.
 - Closing `companion` also hides `companion_dialog`.
-- If all frontend windows are hidden, Hestia stops currently managed backend processes but keeps the tray/Tauri process alive.
+- If all frontend windows are hidden, Hestia stops currently managed backend processes on a blocking worker thread but keeps the tray/Tauri process alive. The native window event thread remains responsive.
 - Tray left-click opens `main`, emits `show-chat`, closes settings-style overlays, and focuses the chat input.
 - Tray right-click menu exposes Open Chat, Open Settings, Open Companion, Restart Backend, and Quit.
 - Tray menu Open Chat uses the same `show-chat` event as tray left-click.
