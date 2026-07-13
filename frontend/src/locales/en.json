@@ -58,6 +58,12 @@
   "settings.pythonHint": "Use the Python executable inside conda or venv.",
   "settings.envType": "Env type",
   "settings.workflow": "Workflow",
+  "settings.textWorkflow": "Text workflow",
+  "settings.imageWorkflow": "Image+text workflow",
+  "settings.imageWorkflowHint": "Requires a LoadImage node for image+text generation.",
+  "settings.defaultImageMode": "Default image mode",
+  "settings.defaultDenoise": "Default denoise",
+  "settings.defaultDenoiseHint": "Lower values preserve more of the input image.",
   "settings.outputDir": "Output dir",
   "settings.launchCommand": "Launch command",
   "settings.launchCommandHint": "Optional. Placeholders: {python}, {root_dir}, {host}, {port}.",
@@ -120,5 +126,13 @@
   "role.activated": "Activated {name}.",
   "role.deleted": "Deleted {id}.",
   "role.deletePrompt": "Type exactly: {text}",
-  "initiative.notAllowed": "Not speaking proactively for now: {reason}"
+  "initiative.notAllowed": "Not speaking proactively for now: {reason}",
+  "image.mode": "Mode",
+  "image.mode.text": "Text to image",
+  "image.mode.imageText": "Image + text to image",
+  "image.input": "Input image",
+  "image.inputPlaceholder": "Optional input image path",
+  "image.denoise": "Denoise",
+  "image.denoiseHint": "Used by image+text workflows with a KSampler denoise input.",
+  "image.generateReference": "Generate image from reference"
 }

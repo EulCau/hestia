@@ -567,7 +567,10 @@ env_type = "conda"
 auto_start = false
 launch_command = ""
 workflow_path = "assets/workflows/sdxl.json"
+image_text_workflow_path = "assets/workflows/sdxl.json"
 output_dir = "data/artifacts/images"
+default_mode = "text_to_image"
+default_denoise = 0.65
 startup_timeout_ms = 20000
 ```
 
@@ -581,12 +584,13 @@ For llama.cpp, starting the server with a model path loads the model and may occ
 
 ```
 Image Test UI or chat image request
-  -> invoke("generate_test_image", { prompt, negativePrompt })
-  -> or invoke("send_chat_message", { message: "\\image ...", history })
+  -> invoke("generate_test_image", { prompt, negativePrompt, inputImagePath, imageMode, denoise })
+  -> or invoke("send_chat_message", { message: "\\image ...", history, inputImagePath, imageMode, denoise })
   -> Job(capability = ImageGeneration)
   -> Scheduler
   -> ResourceManager local GPU slot
   -> ComfyUiWorker
+  -> optional POST /upload/image for image+text input
   -> POST /prompt
   -> poll /history/{prompt_id}
   -> download /view outputs
@@ -594,7 +598,9 @@ Image Test UI or chat image request
   -> stop managed ComfyUI process if Hestia started it for this job
 ```
 
-Chat image generation supports explicit `\image prompt` and `/image prompt`, an input image button, and conservative model-routed intent detection. The router uses the configured remote chat worker and must return strict JSON before Hestia runs ComfyUI.
+Chat image generation supports explicit `\image prompt` and `/image prompt`, a text-to-image button, a reference-image button that routes to image recognition or image+text-to-image through conservative model-routed intent detection, and text-only model-routed image intent detection. The router uses the configured remote chat worker and must return strict JSON before Hestia runs ComfyUI.
+
+Image+text generation uses `multimodal.comfyui.image_text_workflow_path`. The workflow must contain a `LoadImage` node. Hestia uploads the selected local image through ComfyUI `/upload/image`, injects the uploaded filename into `LoadImage.inputs.image`, and injects `default_denoise` or request-level `denoise` into standard `KSampler.inputs.denoise`.
 
 ### 9.4 Kimi Vision Recognition
 
@@ -620,6 +626,7 @@ The ComfyUI worker supports:
 - API workflow JSON with `class_type`
 - UI workflow JSON exported from the ComfyUI canvas, converted into API prompt format
 - Prompt override for PrimitiveNode titles containing `Positive` / `Negative`
+- Input image override for API/UI workflows that contain a `LoadImage` node
 
 ### 9.6 Test Workflow Requirements
 

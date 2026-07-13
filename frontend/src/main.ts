@@ -73,7 +73,10 @@ interface ConfigSnapshot {
       auto_start: boolean;
       launch_command: string;
       workflow_path: string;
+      image_text_workflow_path: string;
       output_dir: string;
+      default_mode: string;
+      default_denoise: number;
       startup_timeout_ms: number;
       managed_process?: boolean;
     };
@@ -101,6 +104,8 @@ interface ChatResponse {
   rewritten?: boolean;
   generated_image?: boolean;
   image_prompt?: string;
+  input_image_path?: string;
+  mode?: string;
   images?: string[];
 }
 
@@ -1477,6 +1482,31 @@ function buildImageTestPanel(): HTMLElement {
     type: "text",
     value: "text, watermark",
   }) as HTMLInputElement;
+  const modeSelect = el("select") as HTMLSelectElement;
+  [
+    ["text_to_image", t("image.mode.text")],
+    ["image_text_to_image", t("image.mode.imageText")],
+  ].forEach(([value, label]) => modeSelect.append(option(value, label, "text_to_image")));
+  const inputImagePath = el("input", { type: "text", placeholder: t("image.inputPlaceholder") }) as HTMLInputElement;
+  const browseInputImage = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse"));
+  browseInputImage.addEventListener("click", async () => {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+    });
+    if (selected && typeof selected === "string") inputImagePath.value = selected;
+  });
+  const denoiseInput = el("input", {
+    type: "range",
+    min: "0",
+    max: "1",
+    step: "0.05",
+    value: "0.65",
+  }) as HTMLInputElement;
+  const denoiseHint = el("span", { class: "hint" }, `${t("image.denoise")} 0.65`);
+  denoiseInput.addEventListener("input", () => {
+    denoiseHint.textContent = `${t("image.denoise")} ${Number(denoiseInput.value).toFixed(2)}`;
+  });
   const result = el("div", { class: "image-result" });
   const runBtn = el("button", { class: "btn btn-primary", type: "button" }, icon("image", 16), "Generate");
   const closeBtn = el("button", { class: "btn btn-secondary", type: "button" }, "Close");
@@ -1489,8 +1519,11 @@ function buildImageTestPanel(): HTMLElement {
       const raw = await invoke<string>("generate_test_image", {
         prompt: promptInput.value.trim(),
         negativePrompt: negativeInput.value.trim() || null,
+        inputImagePath: inputImagePath.value.trim() || null,
+        imageMode: modeSelect.value,
+        denoise: Number(denoiseInput.value),
       });
-      const response = JSON.parse(raw) as { prompt_id: string; images: string[]; workflow_path: string };
+      const response = JSON.parse(raw) as { prompt_id: string; images: string[]; workflow_path: string; mode?: string };
       setStatus(status, true, `Completed ${response.prompt_id}`);
       for (const path of response.images) {
         const img = el("img", { alt: "Generated image" });
@@ -1526,6 +1559,10 @@ function buildImageTestPanel(): HTMLElement {
       { class: "settings-section" },
       fieldRow("Prompt", promptInput),
       fieldRow("Negative", negativeInput),
+      fieldRow(t("image.mode"), modeSelect),
+      fieldRow(t("image.input"), el("div", { class: "inline-controls two" }, inputImagePath, browseInputImage)),
+      fieldRow(t("image.denoise"), denoiseInput, t("image.denoiseHint")),
+      denoiseHint,
     ),
     result,
     el("div", { class: "settings-actions" }, runBtn, closeBtn),
@@ -1758,11 +1795,32 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     value: cfg.multimodal.comfyui.workflow_path,
     placeholder: "assets/workflows/sdxl.json",
   }) as HTMLInputElement;
+  const comfyImg2ImgWorkflow = el("input", {
+    type: "text",
+    value: cfg.multimodal.comfyui.image_text_workflow_path,
+    placeholder: "assets/workflows/sdxl-image-text.json",
+  }) as HTMLInputElement;
   const comfyOutputDir = el("input", {
     type: "text",
     value: cfg.multimodal.comfyui.output_dir,
     placeholder: "data/artifacts/images",
   }) as HTMLInputElement;
+  const comfyDefaultMode = el("select") as HTMLSelectElement;
+  [
+    ["text_to_image", t("image.mode.text")],
+    ["image_text_to_image", t("image.mode.imageText")],
+  ].forEach(([value, label]) => comfyDefaultMode.append(option(value, label, cfg.multimodal.comfyui.default_mode)));
+  const comfyDenoise = el("input", {
+    type: "range",
+    min: "0",
+    max: "1",
+    step: "0.05",
+    value: String(cfg.multimodal.comfyui.default_denoise),
+  }) as HTMLInputElement;
+  const comfyDenoiseHint = el("span", { class: "hint" }, `${t("image.denoise")} ${Number(comfyDenoise.value).toFixed(2)}`);
+  comfyDenoise.addEventListener("input", () => {
+    comfyDenoiseHint.textContent = `${t("image.denoise")} ${Number(comfyDenoise.value).toFixed(2)}`;
+  });
   const comfyLaunchCommand = el("input", {
     type: "text",
     value: cfg.multimodal.comfyui.launch_command,
@@ -1924,6 +1982,12 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     if (selected && typeof selected === "string") comfyWorkflow.value = selected;
   });
 
+  const browseImg2ImgWorkflow = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse"));
+  browseImg2ImgWorkflow.addEventListener("click", async () => {
+    const selected = await open({ multiple: false, filters: [{ name: "JSON Workflow", extensions: ["json"] }] });
+    if (selected && typeof selected === "string") comfyImg2ImgWorkflow.value = selected;
+  });
+
   const browseOutputDir = el("button", { class: "btn btn-secondary", type: "button" }, t("settings.browse"));
   browseOutputDir.addEventListener("click", async () => {
     const selected = await open({ multiple: false, directory: true });
@@ -2015,8 +2079,18 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
     if (comfyWorkflow.value.trim() !== cfg.multimodal.comfyui.workflow_path) {
       updates.comfyui_workflow_path = comfyWorkflow.value.trim();
     }
+    if (comfyImg2ImgWorkflow.value.trim() !== cfg.multimodal.comfyui.image_text_workflow_path) {
+      updates.comfyui_image_text_workflow_path = comfyImg2ImgWorkflow.value.trim();
+    }
     if (comfyOutputDir.value.trim() !== cfg.multimodal.comfyui.output_dir) {
       updates.comfyui_output_dir = comfyOutputDir.value.trim();
+    }
+    if (comfyDefaultMode.value !== cfg.multimodal.comfyui.default_mode) {
+      updates.comfyui_default_mode = comfyDefaultMode.value;
+    }
+    const defaultDenoise = Number(comfyDenoise.value);
+    if (Number.isFinite(defaultDenoise) && defaultDenoise !== cfg.multimodal.comfyui.default_denoise) {
+      updates.comfyui_default_denoise = defaultDenoise;
     }
     if (visionEnabled.checked !== cfg.multimodal.vision.enabled) updates.vision_enabled = visionEnabled.checked;
     if (visionApiKey.value.trim()) updates.vision_api_key = visionApiKey.value.trim();
@@ -2075,6 +2149,7 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
   const comfyRootControls = el("div", { class: "inline-controls two" }, comfyRootDir, browseComfyRoot);
   const comfyPythonControls = el("div", { class: "inline-controls two" }, comfyPython, browseComfyPython);
   const comfyWorkflowControls = el("div", { class: "inline-controls two" }, comfyWorkflow, browseWorkflow);
+  const comfyImg2ImgWorkflowControls = el("div", { class: "inline-controls two" }, comfyImg2ImgWorkflow, browseImg2ImgWorkflow);
   const comfyOutputControls = el("div", { class: "inline-controls two" }, comfyOutputDir, browseOutputDir);
 
   const pages: Array<[string, HTMLElement]> = [
@@ -2148,7 +2223,11 @@ function buildSettingsPanel(cfg: ConfigSnapshot, onClose: () => void): HTMLEleme
         fieldRow(t("settings.rootDir"), comfyRootControls),
         fieldRow(t("settings.python"), comfyPythonControls, t("settings.pythonHint")),
         fieldRow(t("settings.envType"), comfyEnv),
-        fieldRow(t("settings.workflow"), comfyWorkflowControls),
+        fieldRow(t("settings.textWorkflow"), comfyWorkflowControls),
+        fieldRow(t("settings.imageWorkflow"), comfyImg2ImgWorkflowControls, t("settings.imageWorkflowHint")),
+        fieldRow(t("settings.defaultImageMode"), comfyDefaultMode),
+        fieldRow(t("settings.defaultDenoise"), comfyDenoise, t("settings.defaultDenoiseHint")),
+        comfyDenoiseHint,
         fieldRow(t("settings.outputDir"), comfyOutputControls),
         fieldRow(t("settings.launchCommand"), comfyLaunchCommand, t("settings.launchCommandHint")),
       ),
@@ -2261,7 +2340,10 @@ function fallbackConfig(): ConfigSnapshot {
         auto_start: false,
         launch_command: "",
         workflow_path: "assets/workflows/sdxl.json",
+        image_text_workflow_path: "assets/workflows/sdxl.json",
         output_dir: "data/artifacts/images",
+        default_mode: "text_to_image",
+        default_denoise: 0.65,
         startup_timeout_ms: 20000,
       },
       vision: {
@@ -2432,6 +2514,7 @@ async function buildApp() {
   }) as HTMLTextAreaElement;
   const visionBtn = el("button", { class: "icon-btn image-send-btn", type: "button", title: "Recognize image", "aria-label": "Recognize image" }, icon("eye", 17)) as HTMLButtonElement;
   const imageSendBtn = el("button", { class: "icon-btn image-send-btn", type: "button", title: "Generate image from input", "aria-label": "Generate image from input" }, icon("image", 17)) as HTMLButtonElement;
+  const imageReferenceBtn = el("button", { class: "icon-btn image-send-btn", type: "button", title: t("image.generateReference"), "aria-label": t("image.generateReference") }, icon("brush", 17)) as HTMLButtonElement;
   const sendBtn = el("button", { id: "send-btn", type: "button", title: "Send" }, icon("send", 17), "Send") as HTMLButtonElement;
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !sendBtn.disabled) {
@@ -2439,9 +2522,10 @@ async function buildApp() {
       sendBtn.click();
     }
   });
-  const chatButtons = [sendBtn, imageSendBtn, visionBtn, initiativeBtn];
+  const chatButtons = [sendBtn, imageSendBtn, imageReferenceBtn, visionBtn, initiativeBtn];
   sendBtn.addEventListener("click", () => handleSend(input, chatButtons, messages, "chat"));
   imageSendBtn.addEventListener("click", () => handleSend(input, chatButtons, messages, "image"));
+  imageReferenceBtn.addEventListener("click", () => handleImageReferenceGeneration(input, chatButtons, messages));
   visionBtn.addEventListener("click", () => handleVisionUpload(input, chatButtons, messages));
   initiativeBtn.addEventListener("click", () => handleInitiative(input, chatButtons, messages));
   input.addEventListener("input", reportUserActivity);
@@ -2449,7 +2533,7 @@ async function buildApp() {
   chatContainer.append(
     header,
     messages,
-    el("div", { class: "chat-input-area" }, input, visionBtn, imageSendBtn, sendBtn),
+    el("div", { class: "chat-input-area" }, input, visionBtn, imageReferenceBtn, imageSendBtn, sendBtn),
   );
   main.append(chatContainer);
   layout.append(sidebar, main);
@@ -3149,6 +3233,58 @@ async function handleInitiative(
   }
 }
 
+async function handleImageReferenceGeneration(
+  input: HTMLTextAreaElement,
+  buttons: HTMLButtonElement[],
+  messages: HTMLElement,
+) {
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] }],
+  });
+  if (!selected || typeof selected !== "string") return;
+
+  const prompt = input.value.trim();
+  const outgoingText = prompt;
+  addMessage(messages, "user", prompt ? `[image] ${selected}\n${prompt}` : `[image] ${selected}`);
+  input.value = "";
+  input.disabled = true;
+  buttons.forEach((button) => {
+    button.disabled = true;
+  });
+  const loadingMessage = addMessage(messages, "loading", "Generating image...");
+
+  try {
+    const raw = await invoke<string>("send_chat_message", {
+      message: outgoingText,
+      history: chatHistory,
+      inputImagePath: selected,
+      imageMode: null,
+      denoise: null,
+    });
+    const response = JSON.parse(raw) as ChatResponse;
+    const content = response.content || "";
+    loadingMessage.remove();
+    const messageElement = addMessage(messages, "assistant", content);
+    messageElement.setAttribute("data-generated-image", "true");
+    if (response.image_prompt || response.input_image_path) {
+      messageElement.setAttribute("title", [response.mode, response.input_image_path, response.image_prompt].filter(Boolean).join(" | "));
+    }
+    await appendGeneratedImages(messageElement, response.images ?? []);
+    chatHistory.push({ role: "user", content: outgoingText });
+    chatHistory.push({ role: "assistant", content });
+  } catch (error) {
+    loadingMessage.remove();
+    addMessage(messages, "error", String(error));
+  } finally {
+    input.disabled = false;
+    buttons.forEach((button) => {
+      button.disabled = false;
+    });
+    input.focus();
+  }
+}
+
 async function handleSend(input: HTMLTextAreaElement, buttons: HTMLButtonElement[], messages: HTMLElement, mode: "chat" | "image") {
   const text = input.value.trim();
   if (!text) return;
@@ -3164,7 +3300,13 @@ async function handleSend(input: HTMLTextAreaElement, buttons: HTMLButtonElement
   const loadingMessage = addMessage(messages, "loading", loadingText);
 
   try {
-    const raw = await invoke<string>("send_chat_message", { message: outgoingText, history: chatHistory });
+    const raw = await invoke<string>("send_chat_message", {
+      message: outgoingText,
+      history: chatHistory,
+      inputImagePath: null,
+      imageMode: mode === "image" ? "text_to_image" : null,
+      denoise: null,
+    });
     const response = JSON.parse(raw) as ChatResponse;
     const content = response.content || "";
     loadingMessage.remove();

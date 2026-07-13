@@ -62,6 +62,15 @@ struct ImageIntentDecision {
     response_text: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct ImageGenerationRequest {
+    prompt: String,
+    negative_prompt: Option<String>,
+    mode: String,
+    input_image_path: Option<String>,
+    denoise: Option<f64>,
+}
+
 #[derive(Debug, Default, Deserialize, Serialize)]
 struct RoleGenerationSeed {
     name: Option<String>,
@@ -682,10 +691,9 @@ async fn request_initiative_message(
 
     let cfg = current_config(&state);
     let role_id = cfg.personality.default_profile.clone();
-    let assembler =
-        PromptAssembler::load(&role_id)
-            .map_err(|e| format!("failed to load persona: {}", e))?
-            .with_system_prompt_language(cfg.app.language.system_prompt.clone());
+    let assembler = PromptAssembler::load(&role_id)
+        .map_err(|e| format!("failed to load persona: {}", e))?
+        .with_system_prompt_language(cfg.app.language.system_prompt.clone());
     let memories = memory::relevant_memories(&role_id, &decision.suggested_prompt, 6)
         .unwrap_or_else(|e| {
             warn!(error = %e, "failed to load initiative memory context");
@@ -1289,16 +1297,27 @@ async fn generate_test_image(
     state: tauri::State<'_, AppState>,
     prompt: String,
     negative_prompt: Option<String>,
+    input_image_path: Option<String>,
+    image_mode: Option<String>,
+    denoise: Option<f64>,
 ) -> Result<String, String> {
-    run_image_generation(&state, prompt, negative_prompt)
-        .await
-        .map(|value| value.to_string())
+    run_image_generation(
+        &state,
+        ImageGenerationRequest {
+            prompt,
+            negative_prompt,
+            mode: image_mode.unwrap_or_else(|| "text_to_image".into()),
+            input_image_path,
+            denoise,
+        },
+    )
+    .await
+    .map(|value| value.to_string())
 }
 
 async fn run_image_generation(
     state: &AppState,
-    prompt: String,
-    negative_prompt: Option<String>,
+    request: ImageGenerationRequest,
 ) -> Result<serde_json::Value, String> {
     let Some(worker) = &state.comfyui_worker else {
         return Err(
@@ -1341,15 +1360,36 @@ async fn run_image_generation(
             return Err("ComfyUI did not become healthy before startup timeout".into());
         }
     }
+    let mode = normalize_image_mode(&request.mode, request.input_image_path.as_deref());
+    let workflow_path = if mode == "text_to_image" {
+        state.config.multimodal.comfyui.workflow_path.clone()
+    } else {
+        state
+            .config
+            .multimodal
+            .comfyui
+            .image_text_workflow_path
+            .clone()
+    };
+    if mode != "text_to_image" && request.input_image_path.as_deref().unwrap_or("").is_empty() {
+        return Err("image+text generation requires an input image".into());
+    }
+    let denoise = request
+        .denoise
+        .unwrap_or(state.config.multimodal.comfyui.default_denoise)
+        .clamp(0.0, 1.0);
 
     let mut job = crate::protocol::Job::new(
         "image_generation",
         crate::protocol::Capability::ImageGeneration,
         serde_json::json!({
-            "prompt": prompt,
-            "negative_prompt": negative_prompt.unwrap_or_else(|| "text, watermark".into()),
-            "workflow_path": state.config.multimodal.comfyui.workflow_path.clone(),
+            "prompt": request.prompt,
+            "negative_prompt": request.negative_prompt.unwrap_or_else(|| "text, watermark".into()),
+            "workflow_path": workflow_path,
             "output_dir": state.config.multimodal.comfyui.output_dir.clone(),
+            "mode": mode,
+            "input_image_path": request.input_image_path,
+            "denoise": denoise,
         }),
     );
     job.timeout_ms = 180000;
@@ -1376,6 +1416,16 @@ async fn run_image_generation(
     }
 
     result
+}
+
+fn normalize_image_mode(mode: &str, input_image_path: Option<&str>) -> String {
+    match mode {
+        "image_text_to_image" => mode.to_string(),
+        _ if input_image_path.is_some_and(|value| !value.trim().is_empty()) => {
+            "image_text_to_image".into()
+        }
+        _ => "text_to_image".into(),
+    }
 }
 
 #[tauri::command]
@@ -1472,6 +1522,9 @@ async fn send_chat_message(
     state: tauri::State<'_, AppState>,
     message: String,
     history: Vec<personality::ChatMessage>,
+    input_image_path: Option<String>,
+    image_mode: Option<String>,
+    denoise: Option<f64>,
 ) -> Result<String, String> {
     if let Ok(mut initiative) = state.initiative.lock() {
         initiative.record_user_activity();
@@ -1480,7 +1533,19 @@ async fn send_chat_message(
         if prompt.is_empty() {
             return Err("image prompt is empty".into());
         }
-        let result = run_image_generation(&state, prompt.clone(), None).await?;
+        let result = run_image_generation(
+            &state,
+            ImageGenerationRequest {
+                prompt: prompt.clone(),
+                negative_prompt: None,
+                mode: image_mode.unwrap_or_else(|| {
+                    normalize_image_mode("text_to_image", input_image_path.as_deref())
+                }),
+                input_image_path,
+                denoise,
+            },
+        )
+        .await?;
         remember_interaction(&current_role_id(&state), &message, "已完成生图.", "chat");
         return Ok(serde_json::json!({
             "content": "已完成生图.",
@@ -1490,6 +1555,94 @@ async fn send_chat_message(
             "images": result.get("images").cloned().unwrap_or_else(|| serde_json::json!([])),
             "prompt_id": result.get("prompt_id").cloned(),
             "workflow_path": result.get("workflow_path").cloned(),
+            "mode": result.get("mode").cloned(),
+            "input_image_path": result.get("input_image_path").cloned(),
+        })
+        .to_string());
+    }
+
+    if input_image_path
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+    {
+        let Some(input_image_path) = input_image_path else {
+            return Err("image input path is empty".into());
+        };
+        let prompt = message.trim().to_string();
+        let should_generate = if prompt.is_empty() {
+            ImageIntentDecision::default()
+        } else {
+            classify_image_intent(
+                &state,
+                &format!("An input image is attached. User request: {prompt}"),
+                &history,
+            )
+            .await
+        };
+        if should_generate.should_generate || image_mode.as_deref() == Some("image_text_to_image") {
+            let image_prompt = should_generate
+                .image_prompt
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(&prompt)
+                .to_string();
+            if image_prompt.is_empty() {
+                return Err("image+text generation requires a text prompt".into());
+            }
+            let result = run_image_generation(
+                &state,
+                ImageGenerationRequest {
+                    prompt: image_prompt.clone(),
+                    negative_prompt: should_generate.negative_prompt.clone(),
+                    mode: "image_text_to_image".into(),
+                    input_image_path: Some(input_image_path.clone()),
+                    denoise,
+                },
+            )
+            .await?;
+            let content = should_generate
+                .response_text
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or("已根据输入图片和文字提示完成生图.");
+            remember_interaction(&current_role_id(&state), &message, content, "chat");
+            return Ok(serde_json::json!({
+                "content": content,
+                "rewritten": false,
+                "generated_image": true,
+                "image_prompt": image_prompt,
+                "negative_prompt": should_generate.negative_prompt,
+                "images": result.get("images").cloned().unwrap_or_else(|| serde_json::json!([])),
+                "prompt_id": result.get("prompt_id").cloned(),
+                "workflow_path": result.get("workflow_path").cloned(),
+                "mode": result.get("mode").cloned(),
+                "input_image_path": result.get("input_image_path").cloned(),
+            })
+            .to_string());
+        }
+
+        let result = run_vision_recognition(
+            &state,
+            input_image_path,
+            if prompt.is_empty() { None } else { Some(prompt) },
+            "chat_upload",
+        )
+        .await?;
+        let content = result
+            .get("content")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        remember_interaction(&current_role_id(&state), &message, &content, "chat");
+        return Ok(serde_json::json!({
+            "content": content,
+            "rewritten": false,
+            "vision": true,
+            "model": result.get("model").cloned(),
+            "source": result.get("source").cloned(),
+            "image_path": result.get("image_path").cloned(),
         })
         .to_string());
     }
@@ -1503,9 +1656,17 @@ async fn send_chat_message(
             .filter(|value| !value.is_empty())
             .unwrap_or(message.trim())
             .to_string();
-        let result =
-            run_image_generation(&state, prompt.clone(), image_intent.negative_prompt.clone())
-                .await?;
+        let result = run_image_generation(
+            &state,
+            ImageGenerationRequest {
+                prompt: prompt.clone(),
+                negative_prompt: image_intent.negative_prompt.clone(),
+                mode: "text_to_image".into(),
+                input_image_path: None,
+                denoise: None,
+            },
+        )
+        .await?;
         let content = image_intent
             .response_text
             .as_deref()
@@ -1522,16 +1683,16 @@ async fn send_chat_message(
             "images": result.get("images").cloned().unwrap_or_else(|| serde_json::json!([])),
             "prompt_id": result.get("prompt_id").cloned(),
             "workflow_path": result.get("workflow_path").cloned(),
+            "mode": result.get("mode").cloned(),
         })
         .to_string());
     }
 
     let cfg = current_config(&state);
     let role_id = cfg.personality.default_profile.clone();
-    let assembler =
-        PromptAssembler::load(&role_id)
-            .map_err(|e| format!("failed to load persona: {}", e))?
-            .with_system_prompt_language(cfg.app.language.system_prompt.clone());
+    let assembler = PromptAssembler::load(&role_id)
+        .map_err(|e| format!("failed to load persona: {}", e))?
+        .with_system_prompt_language(cfg.app.language.system_prompt.clone());
 
     let persona_name = assembler.persona_name().to_string();
 
@@ -2080,7 +2241,10 @@ pub fn run() {
 mod tests {
     use std::path::Path;
 
-    use super::{encode_base64, explicit_image_prompt, image_mime_for_path, parse_image_intent};
+    use super::{
+        encode_base64, explicit_image_prompt, image_mime_for_path, normalize_image_mode,
+        parse_image_intent,
+    };
 
     #[test]
     fn test_encode_base64() {
@@ -2123,5 +2287,18 @@ mod tests {
             "image/jpeg"
         );
         assert!(image_mime_for_path(Path::new("archive.zip")).is_err());
+    }
+
+    #[test]
+    fn test_normalize_image_mode() {
+        assert_eq!(normalize_image_mode("text_to_image", None), "text_to_image");
+        assert_eq!(
+            normalize_image_mode("text_to_image", Some("/tmp/input.png")),
+            "image_text_to_image"
+        );
+        assert_eq!(
+            normalize_image_mode("image_text_to_image", Some("/tmp/input.png")),
+            "image_text_to_image"
+        );
     }
 }

@@ -6,7 +6,9 @@ use serde::Deserialize;
 use tokio::time::{sleep, Duration, Instant};
 use tracing::{info, warn};
 
-use crate::multimodal::{load_comfyui_prompt, resolve_project_path};
+use crate::multimodal::{
+    load_comfyui_prompt_with_overrides, resolve_project_path, ComfyPromptOverrides,
+};
 use crate::protocol::{Capability, Job, ResourceRequirements};
 
 use super::{Worker, WorkerError};
@@ -14,6 +16,11 @@ use super::{Worker, WorkerError};
 #[derive(Debug, Deserialize)]
 struct PromptResponse {
     prompt_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct UploadImageResponse {
+    name: String,
 }
 
 pub struct ComfyUiWorker {
@@ -174,6 +181,79 @@ impl ComfyUiWorker {
 
         Ok(saved)
     }
+
+    async fn upload_input_image(&self, path: &str) -> Result<String, WorkerError> {
+        let image_path = std::path::Path::new(path);
+        let filename = image_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or("hestia-input.png")
+            .to_string();
+        let mime =
+            image_mime_for_path(image_path).map_err(|reason| WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason,
+            })?;
+        let bytes = std::fs::read(image_path).map_err(|e| WorkerError::InferenceFailed {
+            worker_id: self.id.clone(),
+            reason: format!("failed to read input image: {}", e),
+        })?;
+        let boundary = format!("hestia-{}", uuid::Uuid::new_v4());
+        let body = build_multipart_image_body(&boundary, &filename, mime, &bytes);
+        let url = format!("{}/upload/image", self.base_url);
+        let response = self
+            .client
+            .post(&url)
+            .header(
+                reqwest::header::CONTENT_TYPE,
+                format!("multipart/form-data; boundary={boundary}"),
+            )
+            .body(body)
+            .send()
+            .await
+            .map_err(|e| WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("input image upload failed: {}", e),
+            })?;
+        let status = response.status();
+        let text = response
+            .text()
+            .await
+            .map_err(|e| WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("failed to read upload response: {}", e),
+            })?;
+        if !status.is_success() {
+            return Err(WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("image upload status {}: {}", status, text),
+            });
+        }
+        let parsed: UploadImageResponse =
+            serde_json::from_str(&text).map_err(|e| WorkerError::InferenceFailed {
+                worker_id: self.id.clone(),
+                reason: format!("failed to parse upload response: {}", e),
+            })?;
+        Ok(parsed.name)
+    }
+}
+
+fn build_multipart_image_body(boundary: &str, filename: &str, mime: &str, bytes: &[u8]) -> Vec<u8> {
+    let mut body = Vec::new();
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        format!(
+            "Content-Disposition: form-data; name=\"image\"; filename=\"{}\"\r\n",
+            filename.replace('"', "_")
+        )
+        .as_bytes(),
+    );
+    body.extend_from_slice(format!("Content-Type: {mime}\r\n\r\n").as_bytes());
+    body.extend_from_slice(bytes);
+    body.extend_from_slice(format!("\r\n--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(b"Content-Disposition: form-data; name=\"overwrite\"\r\n\r\ntrue\r\n");
+    body.extend_from_slice(format!("--{boundary}--\r\n").as_bytes());
+    body
 }
 
 #[async_trait]
@@ -218,14 +298,41 @@ impl Worker for ComfyUiWorker {
             .payload
             .get("negative_prompt")
             .and_then(serde_json::Value::as_str);
+        let mode = job
+            .payload
+            .get("mode")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("text_to_image");
+        let input_image_path = job
+            .payload
+            .get("input_image_path")
+            .and_then(serde_json::Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty());
+        let denoise = job
+            .payload
+            .get("denoise")
+            .and_then(serde_json::Value::as_f64);
 
-        let prompt =
-            load_comfyui_prompt(workflow_path, prompt_text, negative_prompt).map_err(|e| {
-                WorkerError::InferenceFailed {
-                    worker_id: self.id.clone(),
-                    reason: e,
-                }
-            })?;
+        let uploaded_input_image = if let Some(path) = input_image_path {
+            Some(self.upload_input_image(path).await?)
+        } else {
+            None
+        };
+
+        let prompt = load_comfyui_prompt_with_overrides(
+            workflow_path,
+            ComfyPromptOverrides {
+                prompt: prompt_text,
+                negative_prompt,
+                input_image: uploaded_input_image.as_deref(),
+                denoise,
+            },
+        )
+        .map_err(|e| WorkerError::InferenceFailed {
+            worker_id: self.id.clone(),
+            reason: e,
+        })?;
 
         let url = format!("{}/prompt", self.base_url);
         let body = serde_json::json!({
@@ -299,7 +406,24 @@ impl Worker for ComfyUiWorker {
             "prompt_id": parsed.prompt_id,
             "images": images,
             "workflow_path": workflow_path,
+            "mode": mode,
+            "input_image_path": input_image_path,
         }))
+    }
+}
+
+fn image_mime_for_path(path: &std::path::Path) -> Result<&'static str, String> {
+    match path
+        .extension()
+        .and_then(|ext| ext.to_str())
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("png") => Ok("image/png"),
+        Some("jpg" | "jpeg") => Ok("image/jpeg"),
+        Some("webp") => Ok("image/webp"),
+        Some("gif") => Ok("image/gif"),
+        _ => Err("unsupported input image format. Supported formats: png, jpeg, webp, gif".into()),
     }
 }
 
@@ -330,5 +454,15 @@ mod tests {
             }
         });
         assert_eq!(history_images(&history).len(), 1);
+    }
+
+    #[test]
+    fn test_build_multipart_image_body() {
+        let body = build_multipart_image_body("test-boundary", "a.png", "image/png", b"abc");
+        let text = String::from_utf8_lossy(&body);
+        assert!(text.contains("name=\"image\"; filename=\"a.png\""));
+        assert!(text.contains("Content-Type: image/png"));
+        assert!(text.contains("name=\"overwrite\""));
+        assert!(text.ends_with("--test-boundary--\r\n"));
     }
 }

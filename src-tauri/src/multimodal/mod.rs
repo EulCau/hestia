@@ -5,6 +5,14 @@ use serde_json::{json, Map, Value};
 
 use crate::config::ComfyUiSection;
 
+#[derive(Debug, Clone, Default)]
+pub struct ComfyPromptOverrides<'a> {
+    pub prompt: Option<&'a str>,
+    pub negative_prompt: Option<&'a str>,
+    pub input_image: Option<&'a str>,
+    pub denoise: Option<f64>,
+}
+
 pub fn project_root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
@@ -84,10 +92,9 @@ pub fn screenshot_metadata(enabled: bool, retention: u32) -> Value {
     })
 }
 
-pub fn load_comfyui_prompt(
+pub fn load_comfyui_prompt_with_overrides(
     workflow_path: &str,
-    prompt: Option<&str>,
-    negative_prompt: Option<&str>,
+    overrides: ComfyPromptOverrides<'_>,
 ) -> Result<Value, String> {
     let path = resolve_project_path(workflow_path);
     let raw = std::fs::read_to_string(&path)
@@ -96,12 +103,15 @@ pub fn load_comfyui_prompt(
         serde_json::from_str(&raw).map_err(|e| format!("workflow JSON parse error: {}", e))?;
 
     if looks_like_api_workflow(&workflow) {
-        apply_api_prompt_overrides(&mut workflow, prompt, negative_prompt);
+        apply_api_prompt_overrides(&mut workflow, overrides.prompt, overrides.negative_prompt);
+        apply_api_image_overrides(&mut workflow, overrides.input_image, overrides.denoise)?;
         return Ok(workflow);
     }
 
-    apply_ui_prompt_overrides(&mut workflow, prompt, negative_prompt);
-    ui_workflow_to_api_prompt(&workflow)
+    apply_ui_prompt_overrides(&mut workflow, overrides.prompt, overrides.negative_prompt);
+    let mut prompt = ui_workflow_to_api_prompt(&workflow)?;
+    apply_api_image_overrides(&mut prompt, overrides.input_image, overrides.denoise)?;
+    Ok(prompt)
 }
 
 fn looks_like_api_workflow(value: &Value) -> bool {
@@ -131,6 +141,42 @@ fn apply_api_prompt_overrides(workflow: &mut Value, prompt: Option<&str>, negati
             inputs.insert("text".into(), Value::String(prompt.to_string()));
         }
     }
+}
+
+fn apply_api_image_overrides(
+    workflow: &mut Value,
+    input_image: Option<&str>,
+    denoise: Option<f64>,
+) -> Result<(), String> {
+    let Some(nodes) = workflow.as_object_mut() else {
+        return Ok(());
+    };
+    let mut image_applied = input_image.is_none();
+    for node in nodes.values_mut() {
+        let class_type = node
+            .get("class_type")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string();
+        let Some(inputs) = node.get_mut("inputs").and_then(Value::as_object_mut) else {
+            continue;
+        };
+        if let Some(image) = input_image {
+            if class_type == "LoadImage" {
+                inputs.insert("image".into(), Value::String(image.to_string()));
+                image_applied = true;
+            }
+        }
+        if let Some(denoise) = denoise {
+            if class_type == "KSampler" {
+                inputs.insert("denoise".into(), json!(denoise));
+            }
+        }
+    }
+    if !image_applied {
+        return Err("image+text generation requires a workflow with a LoadImage node".into());
+    }
+    Ok(())
 }
 
 fn apply_ui_prompt_overrides(workflow: &mut Value, prompt: Option<&str>, negative: Option<&str>) {
@@ -265,6 +311,16 @@ fn widget_inputs_for_node(class_type: &str, node: &Value) -> Map<String, Value> 
         "EmptyLatentImage" => &["width", "height", "batch_size"],
         "CheckpointLoaderSimple" => &["ckpt_name"],
         "CLIPTextEncode" => &["text"],
+        "LoadImage" => &["image", "upload"],
+        "KSampler" => &[
+            "seed",
+            "control_after_generate",
+            "steps",
+            "cfg",
+            "sampler_name",
+            "scheduler",
+            "denoise",
+        ],
         "KSamplerAdvanced" => &[
             "add_noise",
             "noise_seed",
@@ -299,10 +355,14 @@ mod tests {
         if !path.exists() {
             return;
         }
-        let prompt = load_comfyui_prompt(
+        let prompt = load_comfyui_prompt_with_overrides(
             path.to_string_lossy().as_ref(),
-            Some("a small brass astrolabe on a desk"),
-            Some("text, watermark"),
+            ComfyPromptOverrides {
+                prompt: Some("a small brass astrolabe on a desk"),
+                negative_prompt: Some("text, watermark"),
+                input_image: None,
+                denoise: None,
+            },
         )
         .unwrap();
         let obj = prompt.as_object().unwrap();
@@ -312,5 +372,24 @@ mod tests {
         assert!(obj.values().any(|node| {
             node.get("class_type").and_then(Value::as_str) == Some("KSamplerAdvanced")
         }));
+    }
+
+    #[test]
+    fn test_apply_image_text_requires_load_image() {
+        let path = project_root().join("assets/workflows/sdxl.json");
+        if !path.exists() {
+            return;
+        }
+        let error = load_comfyui_prompt_with_overrides(
+            path.to_string_lossy().as_ref(),
+            ComfyPromptOverrides {
+                prompt: Some("a cat"),
+                negative_prompt: Some("text"),
+                input_image: Some("input.png"),
+                denoise: Some(0.5),
+            },
+        )
+        .unwrap_err();
+        assert!(error.contains("LoadImage"));
     }
 }

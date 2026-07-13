@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-11 (Settings modules and language preferences)
+**Last updated:** 2026-07-12 (Image-to-image generation)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -187,7 +187,10 @@ Arguments: { updates: Record<string, string|boolean|number> }
     "comfyui_auto_start"      → writes [multimodal.comfyui] auto_start = value (bool, on-demand start)
     "comfyui_launch_command"  → writes [multimodal.comfyui] launch_command = value (string)
     "comfyui_workflow_path"   → writes [multimodal.comfyui] workflow_path = value (string)
+    "comfyui_image_text_workflow_path" → writes [multimodal.comfyui] image_text_workflow_path = value (string)
     "comfyui_output_dir"      → writes [multimodal.comfyui] output_dir = value (string)
+    "comfyui_default_mode"    → writes [multimodal.comfyui] default_mode = value (string)
+    "comfyui_default_denoise" → writes [multimodal.comfyui] default_denoise = value (number)
     "vision_enabled"          → writes [multimodal.vision] enabled = value (bool)
     "vision_base_url"         → writes [multimodal.vision] base_url = value (string)
     "vision_model"            → writes [multimodal.vision] model = value (string)
@@ -214,7 +217,13 @@ Side effect: Writes to config/user.toml. Does NOT hot-reload the backend.
 
 #### `send_chat_message`
 ```
-Arguments: { message: string, history: { role: string, content: string }[] }
+Arguments: {
+  message: string,
+  history: { role: string, content: string }[],
+  inputImagePath?: string|null,
+  imageMode?: "text_to_image" | "image_text_to_image" | null,
+  denoise?: number|null
+}
 Returns:  string (JSON)
   {
     "content": string,
@@ -224,20 +233,22 @@ Returns:  string (JSON)
     "negative_prompt"?: string|null,
     "images"?: string[],
     "prompt_id"?: string|null,
-    "workflow_path"?: string|null
+    "workflow_path"?: string|null,
+    "mode"?: string|null,
+    "input_image_path"?: string|null
   }
 Errors:   string — e.g. "inference failed: ..." or "failed to load persona: ..."
 Async:    YES. This is the primary long-running operation.
           Timeline:
             1. If message starts with "\image " or "/image ", run image generation directly
-            2. Otherwise ask the remote chat worker for strict JSON image-intent routing
-            3. If should_generate=true, run ImageGeneration through Scheduler
-            4. If should_generate=false or routing fails, PromptAssembler loads active role JSON
-            5. Memory retrieval loads pinned/relevant memories and injects a bounded context message
-            6. RemoteApiWorker.infer() → HTTP POST to DeepSeek
-            7. Appends dynamic request metadata, including timestamp, as the final message
-            8. Returns the remote response directly. Local persona rewrite is currently disabled.
-            12. Returns final JSON string
+            2. If inputImagePath is set, classify intent and route to image+text generation or image recognition
+            3. Otherwise ask the remote chat worker for strict JSON image-intent routing
+            4. If should_generate=true, run ImageGeneration through Scheduler
+            5. If should_generate=false or routing fails, PromptAssembler loads active role JSON
+            6. Memory retrieval loads pinned/relevant memories and injects a bounded context message
+            7. RemoteApiWorker.infer() → HTTP POST to DeepSeek
+            8. Appends dynamic request metadata, including timestamp, as the final message
+            9. Returns the remote response directly. Local persona rewrite is currently disabled.
 UI State:
   BEFORE:  disable textarea and send/image buttons, show "Thinking..." or "Generating image..."
   AFTER:   remove placeholder, render response and generated image previews, re-enable input
@@ -326,12 +337,20 @@ Usage:    Uses the configured remote chat worker to complete missing role fields
 
 #### `generate_test_image`
 ```
-Arguments: { prompt: string, negativePrompt?: string }
+Arguments: {
+  prompt: string,
+  negativePrompt?: string|null,
+  inputImagePath?: string|null,
+  imageMode?: "text_to_image" | "image_text_to_image",
+  denoise?: number|null
+}
 Returns:  string (JSON)
   {
     "prompt_id": string,
     "images": string[],       // absolute local artifact paths
-    "workflow_path": string
+    "workflow_path": string,
+    "mode": string,
+    "input_image_path"?: string|null
   }
 Errors:   string — e.g. ComfyUI unavailable, workflow parse error, prompt failure
 Async:    YES. Explicit image generation test path.
@@ -340,12 +359,14 @@ Async:    YES. Explicit image generation test path.
             2. If unavailable and auto_start=true, launch configured ComfyUI process on demand
             3. Create Job(capability = ImageGeneration)
             4. Scheduler acquires local GPU resource slot
-            5. ComfyUiWorker loads workflow and builds API prompt
-            6. POST /prompt
-            7. Poll /history/{prompt_id}
-            8. Download /view image outputs
-            9. Save images under configured output_dir
-            10. If Hestia started ComfyUI for this job, stop that managed process
+            5. If inputImagePath is set, ComfyUiWorker uploads it to `/upload/image`
+            6. ComfyUiWorker loads workflow and builds API prompt
+            7. For image modes, injects uploaded filename into LoadImage and denoise into KSampler
+            8. POST /prompt
+            9. Poll /history/{prompt_id}
+            10. Download /view image outputs
+            11. Save images under configured output_dir
+            12. If Hestia started ComfyUI for this job, stop that managed process
 UI State:
   BEFORE:  disable Generate button, show submitted status
   AFTER:   show prompt_id and generated images
@@ -821,7 +842,10 @@ interface ConfigSnapshot {
       auto_start: boolean;      // start backend service on demand for image jobs
       launch_command: string;   // placeholders: {python}, {root_dir}, {host}, {port}
       workflow_path: string;    // default assets/workflows/sdxl.json
+      image_text_workflow_path: string;
       output_dir: string;       // default data/artifacts/images
+      default_mode: "text_to_image" | "image_text_to_image" | string;
+      default_denoise: number;
       startup_timeout_ms: number;
     };
     vision: {
@@ -1026,6 +1050,9 @@ Language preferences:
 | `ui_language` | `string` | `[app.language] ui` |
 | `system_prompt_language` | `string` | `[app.language] system_prompt` |
 | `memory_language` | `string` | `[app.language] memory` |
+| `comfyui_image_text_workflow_path` | `string` | `[multimodal.comfyui] image_text_workflow_path` |
+| `comfyui_default_mode` | `string` | `[multimodal.comfyui] default_mode` |
+| `comfyui_default_denoise` | `number` | `[multimodal.comfyui] default_denoise` |
 
 ---
 
@@ -1218,7 +1245,10 @@ env_type = "venv"      # "system" | "venv" | "conda"
 auto_start = false       # start backend service on demand for image jobs
 launch_command = ""    # placeholders: {python}, {root_dir}, {host}, {port}
 workflow_path = "assets/workflows/sdxl.json"
+image_text_workflow_path = "assets/workflows/sdxl.json"
 output_dir = "data/artifacts/images"
+default_mode = "text_to_image" # "text_to_image" | "image_text_to_image"
+default_denoise = 0.65
 startup_timeout_ms = 20000
 ```
 
@@ -1234,9 +1264,11 @@ ComfyUI normally loads diffusion checkpoints when a workflow runs, but Hestia ke
 
 ### 11.2 Workflow Contract
 
-`workflow_path` may point to either:
+`workflow_path` and `image_text_workflow_path` may point to either:
 - ComfyUI API workflow JSON (`class_type` nodes)
 - ComfyUI UI workflow JSON (`nodes` and `links`)
+
+For `image_text_to_image`, the selected workflow must contain a `LoadImage` node. Hestia uploads the selected local image through ComfyUI's `/upload/image` endpoint, injects the returned filename into `LoadImage.inputs.image`, and writes `denoise` to standard `KSampler.inputs.denoise` when present.
 
 UI workflows are converted to API prompt JSON before POSTing to `/prompt`. The bundled test workflow is:
 
@@ -1267,6 +1299,7 @@ Frontend Image Test or chat image request
 
 The worker uses:
 - `GET /system_stats` for health
+- `POST /upload/image` for image+text input uploads
 - `POST /prompt` for submission
 - `GET /history/{prompt_id}` for completion
 - `GET /view?...` for image download
@@ -1275,9 +1308,10 @@ Image artifacts are saved under `ConfigSnapshot.multimodal.comfyui.output_dir`.
 
 ### 11.4 Chat Image Generation
 
-Chat supports three image entry points:
+Chat supports four image entry points:
 - Explicit command: `\image prompt` or `/image prompt`
 - Input image button: wraps the current textarea value as `\image prompt`
+- Reference image button: selects a local image and calls `send_chat_message` with `inputImagePath`; backend intent routing decides between image recognition and image+text-to-image
 - Model-routed intent: `send_chat_message` asks the remote chat worker for strict JSON and only runs ComfyUI when `should_generate=true`
 
 Router failure falls back to normal chat. The router currently uses the configured remote chat worker. A future local router can reuse the same strict JSON contract through a lightweight local model.

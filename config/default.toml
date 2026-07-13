@@ -75,7 +75,10 @@ auto_start = false
 # Optional full command override. Placeholders: {python}, {root_dir}, {host}, {port}
 launch_command = ""
 workflow_path = "assets/workflows/sdxl.json"
+image_text_workflow_path = "assets/workflows/sdxl.json"
 output_dir = "data/artifacts/images"
+default_mode = "text_to_image"
+default_denoise = 0.65
 startup_timeout_ms = 20000
 
 [multimodal.vision]

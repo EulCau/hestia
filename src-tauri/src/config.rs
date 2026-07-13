@@ -380,8 +380,14 @@ pub struct ComfyUiSection {
     pub launch_command: String,
     #[serde(default = "default_comfyui_workflow_path")]
     pub workflow_path: String,
+    #[serde(default = "default_comfyui_workflow_path")]
+    pub image_text_workflow_path: String,
     #[serde(default = "default_comfyui_output_dir")]
     pub output_dir: String,
+    #[serde(default = "default_comfyui_default_mode")]
+    pub default_mode: String,
+    #[serde(default = "default_comfyui_default_denoise")]
+    pub default_denoise: f64,
     #[serde(default = "default_comfyui_startup_timeout_ms")]
     pub startup_timeout_ms: u64,
 }
@@ -397,6 +403,12 @@ fn default_comfyui_workflow_path() -> String {
 fn default_comfyui_output_dir() -> String {
     "data/artifacts/images".into()
 }
+fn default_comfyui_default_mode() -> String {
+    "text_to_image".into()
+}
+fn default_comfyui_default_denoise() -> f64 {
+    0.65
+}
 fn default_comfyui_startup_timeout_ms() -> u64 {
     20000
 }
@@ -411,7 +423,10 @@ impl Default for ComfyUiSection {
             auto_start: false,
             launch_command: String::new(),
             workflow_path: default_comfyui_workflow_path(),
+            image_text_workflow_path: default_comfyui_workflow_path(),
             output_dir: default_comfyui_output_dir(),
+            default_mode: default_comfyui_default_mode(),
+            default_denoise: default_comfyui_default_denoise(),
             startup_timeout_ms: default_comfyui_startup_timeout_ms(),
         }
     }
@@ -634,7 +649,10 @@ pub fn config_snapshot(c: &AppConfig) -> serde_json::Value {
                 "auto_start": c.multimodal.comfyui.auto_start,
                 "launch_command": c.multimodal.comfyui.launch_command,
                 "workflow_path": c.multimodal.comfyui.workflow_path,
+                "image_text_workflow_path": c.multimodal.comfyui.image_text_workflow_path,
                 "output_dir": c.multimodal.comfyui.output_dir,
+                "default_mode": c.multimodal.comfyui.default_mode,
+                "default_denoise": c.multimodal.comfyui.default_denoise,
                 "startup_timeout_ms": c.multimodal.comfyui.startup_timeout_ms,
             },
             "vision": {
@@ -797,8 +815,17 @@ pub fn update_user_config(updates: serde_json::Value) -> Result<(), Box<dyn std:
         if let Some(v) = updates.get("comfyui_workflow_path") {
             upsert("multimodal.comfyui", "workflow_path", v);
         }
+        if let Some(v) = updates.get("comfyui_image_text_workflow_path") {
+            upsert("multimodal.comfyui", "image_text_workflow_path", v);
+        }
         if let Some(v) = updates.get("comfyui_output_dir") {
             upsert("multimodal.comfyui", "output_dir", v);
+        }
+        if let Some(v) = updates.get("comfyui_default_mode") {
+            upsert("multimodal.comfyui", "default_mode", v);
+        }
+        if let Some(v) = updates.get("comfyui_default_denoise") {
+            upsert("multimodal.comfyui", "default_denoise", v);
         }
         if let Some(v) = updates.get("vision_enabled") {
             upsert("multimodal.vision", "enabled", v);

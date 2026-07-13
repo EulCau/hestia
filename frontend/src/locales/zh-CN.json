@@ -58,6 +58,12 @@
   "settings.pythonHint": "使用 conda 或 venv 内的 Python 可执行文件.",
   "settings.envType": "环境类型",
   "settings.workflow": "工作流",
+  "settings.textWorkflow": "文生图工作流",
+  "settings.imageWorkflow": "图文生图工作流",
+  "settings.imageWorkflowHint": "图文生图需要工作流包含 LoadImage 节点.",
+  "settings.defaultImageMode": "默认生图模式",
+  "settings.defaultDenoise": "默认重绘幅度",
+  "settings.defaultDenoiseHint": "数值越低, 越保留输入图.",
   "settings.outputDir": "输出目录",
   "settings.launchCommand": "启动命令",
   "settings.launchCommandHint": "可选. 占位符: {python}, {root_dir}, {host}, {port}.",
@@ -120,5 +126,13 @@
   "role.activated": "已启用 {name}.",
   "role.deleted": "已删除 {id}.",
   "role.deletePrompt": "请准确输入: {text}",
-  "initiative.notAllowed": "暂时不主动发言: {reason}"
+  "initiative.notAllowed": "暂时不主动发言: {reason}",
+  "image.mode": "模式",
+  "image.mode.text": "文生图",
+  "image.mode.imageText": "图文生图",
+  "image.input": "输入图",
+  "image.inputPlaceholder": "可选输入图路径",
+  "image.denoise": "重绘幅度",
+  "image.denoiseHint": "用于包含 KSampler denoise 输入的图文生图工作流.",
+  "image.generateReference": "基于参考图生成图片"
 }
