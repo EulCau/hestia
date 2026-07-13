@@ -784,7 +784,7 @@ fn ensure_companion_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindo
     tauri::WebviewWindowBuilder::new(
         app,
         "companion",
-        tauri::WebviewUrl::App("/?view=companion".into()),
+        tauri::WebviewUrl::App("index.html".into()),
     )
     .title("Hestia Companion")
     .inner_size(240.0, 340.0)
@@ -795,6 +795,7 @@ fn ensure_companion_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindo
     .skip_taskbar(true)
     .visible(false)
     .focused(true)
+    .center()
     .build()
     .map_err(|e| format!("failed to create companion window: {}", e))
 }
@@ -806,7 +807,7 @@ fn ensure_companion_dialog_window(app: &tauri::AppHandle) -> Result<tauri::Webvi
     tauri::WebviewWindowBuilder::new(
         app,
         "companion_dialog",
-        tauri::WebviewUrl::App("/?view=companion_dialog".into()),
+        tauri::WebviewUrl::App("index.html".into()),
     )
     .title("Hestia Companion Dialogue")
     .inner_size(320.0, 220.0)
@@ -817,6 +818,7 @@ fn ensure_companion_dialog_window(app: &tauri::AppHandle) -> Result<tauri::Webvi
     .skip_taskbar(true)
     .visible(false)
     .focused(true)
+    .center()
     .build()
     .map_err(|e| format!("failed to create companion dialog window: {}", e))
 }
@@ -1626,7 +1628,11 @@ async fn send_chat_message(
         let result = run_vision_recognition(
             &state,
             input_image_path,
-            if prompt.is_empty() { None } else { Some(prompt) },
+            if prompt.is_empty() {
+                None
+            } else {
+                Some(prompt)
+            },
             "chat_upload",
         )
         .await?;

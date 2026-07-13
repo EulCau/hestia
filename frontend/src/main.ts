@@ -2,7 +2,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import { LogicalSize, PhysicalPosition } from "@tauri-apps/api/dpi";
-import { currentMonitor, getCurrentWindow, Window } from "@tauri-apps/api/window";
+import { availableMonitors, currentMonitor, getCurrentWindow, Window } from "@tauri-apps/api/window";
 import * as PIXI from "pixi.js";
 import type { Live2DModel as Live2DModelInstance } from "pixi-live2d-display/cubism4";
 import "./style.css";
@@ -2627,13 +2627,41 @@ async function buildCompanionView() {
     width: COMPANION_DEFAULT_SIZE.width,
     height: COMPANION_DEFAULT_SIZE.height,
   };
+  const resolveVisibleCompanionPosition = async (x: number, y: number, width: number, height: number) => {
+    const monitors = await availableMonitors().catch(() => []);
+    const intersectsMonitor = monitors.some((monitor) => {
+      const area = monitor.workArea ?? { position: monitor.position, size: monitor.size };
+      return (
+        x < area.position.x + area.size.width &&
+        x + width > area.position.x &&
+        y < area.position.y + area.size.height &&
+        y + height > area.position.y
+      );
+    });
+    if (intersectsMonitor) return new PhysicalPosition(x, y);
+
+    const monitor = (await currentMonitor().catch(() => null)) ?? monitors[0] ?? null;
+    if (!monitor) return null;
+    const area = monitor.workArea ?? { position: monitor.position, size: monitor.size };
+    return new PhysicalPosition(
+      Math.round(area.position.x + Math.max(0, area.size.width - width) / 2),
+      Math.round(area.position.y + Math.max(0, area.size.height - height) / 2),
+    );
+  };
   const restoreCompanionWindowBounds = async () => {
     const size = clampCompanionSize(companionWindowConfig.width, companionWindowConfig.height);
     await currentWindow.setSize(new LogicalSize(size.width, size.height)).catch(() => {});
     if (Number.isFinite(companionWindowConfig.x) && Number.isFinite(companionWindowConfig.y)) {
-      await currentWindow
-        .setPosition(new PhysicalPosition(Math.round(companionWindowConfig.x ?? 0), Math.round(companionWindowConfig.y ?? 0)))
-        .catch(() => {});
+      const scaleFactor = await currentWindow.scaleFactor().catch(() => 1);
+      const position = await resolveVisibleCompanionPosition(
+        Math.round(companionWindowConfig.x ?? 0),
+        Math.round(companionWindowConfig.y ?? 0),
+        Math.round(size.width * scaleFactor),
+        Math.round(size.height * scaleFactor),
+      );
+      if (position) {
+        await currentWindow.setPosition(position).catch(() => {});
+      }
     }
     restoringCompanionWindow = false;
   };
