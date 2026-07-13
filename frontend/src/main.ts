@@ -2706,7 +2706,12 @@ async function buildApp() {
   const visionBtn = el("button", { class: "icon-btn image-send-btn", type: "button", title: "Recognize image", "aria-label": "Recognize image" }, icon("eye", 17)) as HTMLButtonElement;
   const imageSendBtn = el("button", { class: "icon-btn image-send-btn", type: "button", title: "Generate image from input", "aria-label": "Generate image from input" }, icon("image", 17)) as HTMLButtonElement;
   const imageReferenceBtn = el("button", { class: "icon-btn image-send-btn", type: "button", title: t("image.generateReference"), "aria-label": t("image.generateReference") }, icon("brush", 17)) as HTMLButtonElement;
-  const sendBtn = el("button", { id: "send-btn", type: "button", title: "Send" }, icon("send", 17), "Send") as HTMLButtonElement;
+  const sendBtn = el(
+    "button",
+    { id: "send-btn", type: "button", title: "Send" },
+    icon("send", 17),
+    el("span", { class: "send-label" }, "Send"),
+  ) as HTMLButtonElement;
   input.addEventListener("keydown", (event) => {
     if (event.key === "Enter" && !event.shiftKey && !sendBtn.disabled) {
       event.preventDefault();
