@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Chat latency optimization)
+**Last updated:** 2026-07-13 (Tray left-click behavior)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -830,7 +830,7 @@ Window close behavior:
 - Closing `main` or `companion` hides that window instead of destroying it.
 - Closing `companion` also hides `companion_dialog`.
 - If all frontend windows are hidden, Hestia stops currently managed backend processes on a blocking worker thread but keeps the tray/Tauri process alive. The native window event thread remains responsive.
-- Tray left-click opens `main`, emits `show-chat`, closes settings-style overlays, and focuses the chat input.
+- On Windows and macOS, tray left-button press opens `main`, emits `show-chat`, closes settings-style overlays, and focuses the chat input. The tray menu is not shown for left-click. Tauri does not emit tray click events on Linux.
 - Tray right-click menu exposes Open Chat, Open Settings, Open Companion, Restart Backend, and Quit.
 - Tray menu Open Chat uses the same `show-chat` event as tray left-click.
 
