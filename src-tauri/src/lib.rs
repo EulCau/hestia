@@ -184,6 +184,25 @@ fn stop_managed_backends(state: &AppState) {
     }
 }
 
+fn stop_managed_backends_async(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn_blocking(move || {
+        let state = app.state::<AppState>();
+        stop_managed_backends(&state);
+    });
+}
+
+fn quit_app_async(app: tauri::AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let stop_app = app.clone();
+        let _ = tauri::async_runtime::spawn_blocking(move || {
+            let state = stop_app.state::<AppState>();
+            stop_managed_backends(&state);
+        })
+        .await;
+        app.exit(0);
+    });
+}
+
 fn stop_backend_processes(
     local_backend_process: &Arc<Mutex<BackendProcess>>,
     comfyui_backend_process: &Arc<Mutex<BackendProcess>>,
@@ -759,7 +778,7 @@ fn apply_topmost(window: &tauri::WebviewWindow, enabled: bool) -> Result<(), Str
     window
         .set_always_on_top(enabled)
         .map_err(|e| format!("failed to update always-on-top: {}", e))?;
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     window
         .set_visible_on_all_workspaces(enabled)
         .map_err(|e| format!("failed to update workspace visibility: {}", e))?;
@@ -770,7 +789,7 @@ fn apply_window_topmost(window: &tauri::Window, enabled: bool) -> Result<(), Str
     window
         .set_always_on_top(enabled)
         .map_err(|e| format!("failed to update always-on-top: {}", e))?;
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     window
         .set_visible_on_all_workspaces(enabled)
         .map_err(|e| format!("failed to update workspace visibility: {}", e))?;
@@ -2181,13 +2200,10 @@ pub fn run() {
                         }
                     }
                     "restart_backend" => {
-                        let state = app.state::<AppState>();
-                        stop_managed_backends(&state);
+                        stop_managed_backends_async(app.clone());
                     }
                     "quit" => {
-                        let state = app.state::<AppState>();
-                        stop_managed_backends(&state);
-                        app.exit(0);
+                        quit_app_async(app.clone());
                     }
                     _ => {}
                 })

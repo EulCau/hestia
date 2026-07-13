@@ -1,7 +1,26 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
+use std::time::{Duration, Instant};
 use tracing::{error, info, warn};
+
+const PROCESS_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(3);
+
+fn wait_child_with_timeout(
+    child: &mut Child,
+    timeout: Duration,
+) -> std::io::Result<Option<std::process::ExitStatus>> {
+    let started = Instant::now();
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(Some(status));
+        }
+        if started.elapsed() >= timeout {
+            return Ok(None);
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
 
 /// Information about a discovered local model.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -245,17 +264,38 @@ impl BackendProcess {
         if let Some(command) = &self.unload_command {
             let parts: Vec<&str> = command.split_whitespace().collect();
             if let Some((program, args)) = parts.split_first() {
-                match Command::new(program).args(args).status() {
-                    Ok(status) if status.success() => {
-                        info!(backend = %backend, command = %command, "custom unload command succeeded");
-                    }
-                    Ok(status) => {
-                        warn!(
-                            backend = %backend,
-                            command = %command,
-                            status = %status,
-                            "custom unload command failed, falling back to process termination"
-                        );
+                match Command::new(program).args(args).spawn() {
+                    Ok(mut unload_child) => {
+                        match wait_child_with_timeout(&mut unload_child, PROCESS_SHUTDOWN_TIMEOUT) {
+                            Ok(Some(status)) if status.success() => {
+                                info!(backend = %backend, command = %command, "custom unload command succeeded");
+                            }
+                            Ok(Some(status)) => {
+                                warn!(
+                                    backend = %backend,
+                                    command = %command,
+                                    status = %status,
+                                    "custom unload command failed, falling back to process termination"
+                                );
+                            }
+                            Ok(None) => {
+                                let _ = unload_child.kill();
+                                let _ = unload_child.wait();
+                                warn!(
+                                    backend = %backend,
+                                    command = %command,
+                                    "custom unload command timed out, falling back to process termination"
+                                );
+                            }
+                            Err(e) => {
+                                warn!(
+                                    backend = %backend,
+                                    command = %command,
+                                    error = %e,
+                                    "custom unload command wait failed, falling back to process termination"
+                                );
+                            }
+                        }
                     }
                     Err(e) => {
                         warn!(
@@ -275,6 +315,34 @@ impl BackendProcess {
             libc::kill(-(pid as i32), libc::SIGTERM);
         }
         std::thread::sleep(std::time::Duration::from_millis(500));
+
+        #[cfg(windows)]
+        {
+            match Command::new("taskkill")
+                .args(["/PID", &pid.to_string(), "/T", "/F"])
+                .status()
+            {
+                Ok(status) if status.success() => {
+                    info!(backend = %backend, pid, "backend process tree killed");
+                }
+                Ok(status) => {
+                    warn!(
+                        backend = %backend,
+                        pid,
+                        status = %status,
+                        "taskkill failed, falling back to direct process termination"
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        backend = %backend,
+                        pid,
+                        error = %e,
+                        "taskkill could not start, falling back to direct process termination"
+                    );
+                }
+            }
+        }
 
         match child.kill() {
             Ok(()) => {
@@ -297,7 +365,15 @@ impl BackendProcess {
                 }
             }
         }
-        let _ = child.wait();
+        match wait_child_with_timeout(child, PROCESS_SHUTDOWN_TIMEOUT) {
+            Ok(Some(_)) => {}
+            Ok(None) => {
+                warn!(backend = %backend, pid, "backend process wait timed out");
+            }
+            Err(e) => {
+                warn!(backend = %backend, pid, error = %e, "failed to wait for backend process");
+            }
+        }
         self.child = None;
     }
 
