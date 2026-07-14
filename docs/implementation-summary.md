@@ -1,6 +1,6 @@
 # Hestia Implementation Summary
 
-**Date:** 2026-06-17
+**Date:** 2026-07-14
 **Current Phase:** 7 roles + memory core MVP, 8 Live2D companion adapter MVP
 
 ---
@@ -350,7 +350,7 @@ Frontend behavior:
 
 Behavior:
 - The main window remains the chat/settings control surface.
-- The companion window is lazy-created on first show and then shown/hidden through `set_companion_visible`.
+- Windows/macOS create the companion and dialogue windows hidden during Tauri setup, then show/hide them through the visibility commands. Linux keeps lazy creation to avoid WebKitGTK/Wayland startup issues. Pre-creation prevents Wry runtime-handle window creation from deadlocking tray or IPC event callbacks on Windows.
 - The companion view renders only the placeholder avatar and hover controls.
 - The companion dialogue uses a separate window that follows the companion without overlapping the avatar when screen space allows, with `set_companion_dialog_visible` as a backend show/hide fallback.
 - Timer-triggered proactive speech is requested only from the companion view with `trigger = "companion_timer"`.

@@ -1,6 +1,6 @@
 # UI Interface Contract
 
-**Last updated:** 2026-07-13 (Bounded chat scrolling)
+**Last updated:** 2026-07-14 (Windows companion window deadlock fix)
 **Purpose:** Defines every backend command, every config key, and every async contract that the frontend depends on. When backend changes are made, this document must be updated.
 
 ---
@@ -646,13 +646,22 @@ The `applyTheme(mode)` function is called:
 
 ### 3.4 Companion Window State
 
-The app has one startup Tauri window and two lazy-created companion windows:
+The app has one main window and two companion windows. Windows and macOS create both
+companion windows hidden during `setup`, before the native event loop begins handling
+tray and IPC events. Linux keeps lazy creation to avoid WebKitGTK/Wayland startup issues.
 
 | Label | Initial visibility | Purpose |
 |---|---|---|
 | `main` | visible | Chat, settings, manual controls |
-| `companion` | created hidden on first `set_companion_visible(true)` | Always-on-top desktop companion surface |
-| `companion_dialog` | created hidden on first `set_companion_dialog_visible(true)` | Independent dialogue bubble following the companion |
+| `companion` | Windows/macOS: created hidden at startup; Linux: created hidden on first show | Always-on-top desktop companion surface |
+| `companion_dialog` | Windows/macOS: created hidden at startup; Linux: created hidden on first show | Independent dialogue bubble following the companion |
+
+Windows/macOS pre-creation is required because Wry runtime-handle window creation waits
+for the native event loop. Creating a WebView window synchronously from a tray or IPC
+event callback can deadlock that event loop. Visibility commands therefore only show or
+hide an already-created window on those platforms. On page initialization, the companion
+view reads the native window visibility before enabling visibility-dependent persistence,
+topmost refresh, or initiative checks; a pre-created hidden window must not behave as visible.
 
 The main window controls companion visibility through:
 

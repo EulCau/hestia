@@ -2789,7 +2789,7 @@ async function buildCompanionView() {
   let alwaysOnTop = true;
   let inFlight = false;
   let dialogVisible = false;
-  let companionWindowVisible = true;
+  let companionWindowVisible = await currentWindow.isVisible().catch(() => false);
   let restoringCompanionWindow = true;
   let persistWindowTimer: number | null = null;
 

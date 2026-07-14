@@ -931,7 +931,9 @@ fn apply_window_topmost(window: &tauri::Window, enabled: bool) -> Result<(), Str
     Ok(())
 }
 
-fn ensure_companion_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+fn ensure_companion_window<R: tauri::Runtime, M: Manager<R>>(
+    app: &M,
+) -> Result<tauri::WebviewWindow<R>, String> {
     if let Some(window) = app.get_webview_window("companion") {
         return Ok(window);
     }
@@ -954,7 +956,9 @@ fn ensure_companion_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindo
     .map_err(|e| format!("failed to create companion window: {}", e))
 }
 
-fn ensure_companion_dialog_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, String> {
+fn ensure_companion_dialog_window<R: tauri::Runtime, M: Manager<R>>(
+    app: &M,
+) -> Result<tauri::WebviewWindow<R>, String> {
     if let Some(window) = app.get_webview_window("companion_dialog") {
         return Ok(window);
     }
@@ -2493,6 +2497,13 @@ pub fn run() {
             }
         })
         .setup(move |app| {
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
+            {
+                ensure_companion_window(app)?;
+                ensure_companion_dialog_window(app)?;
+                info!("companion windows created hidden at startup");
+            }
+
             let menu = MenuBuilder::new(app)
                 .text("open_main", "Open Chat")
                 .text("open_settings", "Open Settings")
